@@ -3,7 +3,8 @@
 // 비밀키(Edge Functions > Secrets) 중 하나만 넣으면 됩니다:
 //   GEMINI_API_KEY    : Google AI Studio 무료 키 (https://aistudio.google.com/apikey)
 //   ANTHROPIC_API_KEY : Claude API 키 (https://console.anthropic.com)
-// 선택: GEMINI_MODEL (기본 gemini-2.5-flash), CLAUDE_MODEL (기본 claude-sonnet-5-5), OPENAI_API_KEY (있으면 말 받아 적기에 Whisper 계열 사용, OPENAI_STT_MODEL 기본 gpt-4o-transcribe)
+//   OPENAI_API_KEY    : OpenAI 키 (https://platform.openai.com/api-keys) — 있으면 AI 아바타(gpt-image-1)와 말 받아 적기(gpt-4o-transcribe)에 사용
+// 선택: GEMINI_MODEL (기본 gemini-2.5-flash), CLAUDE_MODEL (기본 claude-sonnet-5-5), OPENAI_STT_MODEL (기본 gpt-4o-transcribe), OPENAI_IMAGE_MODEL (기본 gpt-image-1), OPENAI_IMAGE_QUALITY (기본 medium)
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -68,19 +69,61 @@ Deno.serve(async (req) => {
     const geminiKey = findKey(/gemini|google/i);
     const claudeKey = findKey(/ant.?h?rop|claude/i);
 
-    // 아바타 모드: { avatar: {media_type, data} } — 사진 속 사람을 귀여운 전신 캐릭터로 (Gemini 이미지 모델)
+    // 아바타 모드: { avatar: {media_type, data} } — 사진 속 사람을 귀여운 전신 캐릭터로 (OpenAI 키 있으면 GPT 이미지, 없으면 Gemini 이미지 모델)
     // 모델 이름이 바뀌어도 되게: 키로 쓸 수 있는 모델 목록에서 이미지 생성 모델을 찾아 차례로 시도
     if (body.avatar?.data) {
-      if (!geminiKey) throw new Error("AI 아바타는 Gemini 키가 있어야 만들 수 있어요");
+      const openaiKey = findKey(/openai/i);
+      if (!openaiKey && !geminiKey) throw new Error("AI 아바타는 OpenAI 키나 Gemini 키가 있어야 만들 수 있어요");
       const prompt = "Turn the person in this photo into a cute chibi-style full-body 3D-cartoon dance character (soft Pixar-like sticker look). Big head and small body (about 2.5 heads tall), head near the top of the frame, whole body visible down to the shoes, standing in a playful shuffle-dance pose on a simple floor, facing the camera, smiling. Keep their recognizable features: hair style and color, glasses, face shape, skin tone, age, and the outfit colors from the photo. Plain soft pastel background, portrait 3:4, no text, no watermark.";
-      const candidates = await imageModels(geminiKey);
-      if (!candidates.length) throw new Error("이 Gemini 키로 쓸 수 있는 이미지 생성 모델이 없어요 (AI Studio에서 결제/한도를 확인해 주세요)");
       const errors: string[] = [];
+      // 1) OpenAI 키가 있으면 GPT 이미지(사진 편집: 얼굴 특징을 유지하는 input_fidelity=high)로 먼저
+      if (openaiKey) {
+        const bin = Uint8Array.from(atob(body.avatar.data), (c) => c.charCodeAt(0));
+        const ext = body.avatar.media_type.includes("png") ? "png" : body.avatar.media_type.includes("webp") ? "webp" : "jpg";
+        const forced = Deno.env.get("OPENAI_IMAGE_MODEL")?.trim();
+        const models = [...(forced ? [forced] : []), "gpt-image-1", "gpt-image-1-mini"].filter((m, i, a) => a.indexOf(m) === i);
+        const quality = Deno.env.get("OPENAI_IMAGE_QUALITY")?.trim() || "medium";
+        for (const model of models) {
+          for (const fidelity of [true, false]) {
+            const form = new FormData();
+            form.append("model", model);
+            form.append("image", new Blob([bin], { type: body.avatar.media_type }), `photo.${ext}`);
+            form.append("prompt", prompt);
+            form.append("size", "1024x1536");
+            form.append("quality", quality);
+            form.append("n", "1");
+            if (fidelity) form.append("input_fidelity", "high");
+            const res = await fetch("https://api.openai.com/v1/images/edits", { method: "POST", headers: { Authorization: `Bearer ${openaiKey}` }, body: form });
+            const j = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              const msg = j?.error?.message ?? `HTTP ${res.status}`;
+              console.error(`[avatar] openai ${model}${fidelity ? "" : " (no input_fidelity)"}: ${res.status} ${msg}`);
+              errors.push(`${model}: ${msg}`);
+              // input_fidelity를 모르는 모델이면 빼고 한 번 더, 그 밖(모델 없음·조직 인증·한도)은 다음 모델로
+              if (fidelity && res.status === 400 && /input_fidelity/i.test(msg)) continue;
+              break;
+            }
+            const b64 = j?.data?.[0]?.b64_json;
+            if (b64) {
+              console.log(`[avatar] ok via openai ${model}`);
+              return new Response(JSON.stringify({ image: b64, media_type: "image/png", model }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+            console.error(`[avatar] openai ${model}: no image`);
+            errors.push(`${model}: 그림 없음`);
+            break;
+          }
+        }
+        if (!geminiKey) throw new Error(`아바타를 만들지 못했어요. ${errors[0] ?? ""}`.trim());
+        console.log("[avatar] openai failed, trying gemini");
+      }
+      // 2) Gemini 이미지 모델 (OpenAI 키가 없거나 실패했을 때)
+      const candidates = await imageModels(geminiKey!);
+      if (!candidates.length) throw new Error("이 Gemini 키로 쓸 수 있는 이미지 생성 모델이 없어요 (AI Studio에서 결제/한도를 확인해 주세요)");
       for (const model of candidates) {
         for (const withCfg of [true, false]) {
           const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
+            headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey! },
             body: JSON.stringify({
               contents: [{ role: "user", parts: [{ inline_data: { mime_type: body.avatar.media_type, data: body.avatar.data } }, { text: prompt }] }],
               generationConfig: withCfg ? { responseModalities: ["IMAGE", "TEXT"], imageConfig: { aspectRatio: "3:4" } } : { responseModalities: ["IMAGE", "TEXT"] },
