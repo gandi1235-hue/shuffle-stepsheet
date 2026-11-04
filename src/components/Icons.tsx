@@ -50,3 +50,4 @@ export const Brand = ({ size = 26 }: { size?: number }) => (
 )
 export const LayoutTop = () => <svg {...base}><rect x="3" y="4" width="18" height="7" rx="2" /><path d="M3 15h18M3 19h12" /></svg>
 export const LayoutSide = () => <svg {...base}><rect x="3" y="5" width="10" height="14" rx="2" /><path d="M16 7h5M16 11h5M16 15h5" /></svg>
+export const Help = () => <svg {...base}><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7" /><circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none" /></svg>

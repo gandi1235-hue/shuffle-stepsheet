@@ -3,10 +3,10 @@ import { Link, useNavigate } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import { Sheet as Modal } from '../components/ui'
 import InstallBanner from '../components/InstallBanner'
-import Onboarding from '../components/Onboarding'
+import Guide, { type Deck } from '../components/Guide'
 import Tour from '../components/Tour'
 import { ONBOARD_KEY } from '../lib/tour'
-import { Camera, Chat, Chevron, Folder as FolderIcon, Gear, Music, People, Brand } from '../components/Icons'
+import { Camera, Chat, Chevron, Folder as FolderIcon, Gear, Help, Music, People, Brand } from '../components/Icons'
 import { getProfile, listFolders, recentSheets, unreadCounts, type Profile } from '../lib/api'
 import type { Folder, Stepsheet } from '../lib/types'
 
@@ -18,6 +18,7 @@ export default function StartPage() {
   const [pick, setPick] = useState(false)
   const [unread, setUnread] = useState<Map<string, number>>(new Map())
   const [onboarded, setOnboarded] = useState(() => localStorage.getItem(ONBOARD_KEY) === '1') // 카드뉴스를 다 본 뒤에 둘러보기 시작
+  const [guide, setGuide] = useState<Deck | null>(null) // ? 버튼으로 연 사용법
   const nav = useNavigate()
 
   useEffect(() => {
@@ -49,6 +50,9 @@ export default function StartPage() {
         <div className="topbar">
           <h1 className="brand"><Brand /></h1>
           <div style={{ display: 'flex', gap: 2 }}>
+            <button type="button" className="iconbtn" aria-label="사용법" onClick={() => setGuide('basic')} data-tour="help">
+              <Help />
+            </button>
             <Link to="/profile" className="iconbtn" aria-label="내 프로필">
               <Avatar path={profile?.avatar_path} name={profile?.nickname || profile?.display_name || '나'} userId={profile?.id} size={30} />
             </Link>
@@ -60,8 +64,9 @@ export default function StartPage() {
         <div className="greet">오늘은 어떤 스텝을 출까요?</div>
       </div>
       <div className="content">
-        <Onboarding onDone={() => setOnboarded(true)} />
-        {onboarded && (
+        {!onboarded && <Guide first onClose={() => setOnboarded(true)} />}
+        {guide && <Guide deck={guide} onClose={() => setGuide(null)} />}
+        {onboarded && !guide && (
           <Tour
             name="start"
             ready={folders.length > 0}
@@ -70,7 +75,8 @@ export default function StartPage() {
               { sel: '[data-tour="add"]', title: '새 스텝지 등록', desc: '종이 스텝지를 찍어 올리면 AI가 읽어 줘요. 음원 파일이나 유튜브 링크도 여기서 붙여요.' },
               { sel: '[data-tour="shared"]', title: '공유 폴더', desc: '반 친구들과 같이 볼 폴더를 만들거나, 받은 초대 코드로 들어가요.' },
               { sel: '[data-tour="chat"]', title: '멤버 톡', desc: '같은 폴더 멤버들과 짧게 이야기해요.' },
-              { sel: '[data-tour="settings"]', title: '설정', desc: '글자 크기를 키우거나, 이 안내를 다시 볼 수 있어요. 스텝지를 열면 거기서도 한 번 더 안내해 드려요.' },
+              { sel: '[data-tour="help"]', title: '사용법 다시 보기', desc: '기본 사용법과 심화 사용법 카드를 언제든 여기서 다시 볼 수 있어요. 스텝지를 열면 거기서도 한 번 더 안내해 드려요.' },
+              { sel: '[data-tour="settings"]', title: '설정', desc: '글자 크기를 키우거나 홈 화면에 추가할 수 있어요.' },
             ]}
           />
         )}
