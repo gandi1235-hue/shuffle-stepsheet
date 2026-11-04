@@ -1,4 +1,5 @@
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
+import UpdateBanner from './components/UpdateBanner'
 import { ToastProvider } from './components/ui'
 import { AuthProvider, useAuth } from './lib/auth'
 import { applyPrefs, loadPrefs } from './lib/prefs'
@@ -38,6 +39,7 @@ export default function App() {
       <HashRouter>
         <ToastProvider>
           <div className="app">
+            <UpdateBanner />
             <Gate />
           </div>
         </ToastProvider>
