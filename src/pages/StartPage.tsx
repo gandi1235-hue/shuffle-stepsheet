@@ -1,20 +1,34 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import Avatar from '../components/Avatar'
+import { Sheet as Modal } from '../components/ui'
 import InstallBanner from '../components/InstallBanner'
 import Onboarding from '../components/Onboarding'
-import { Camera, Chevron, Folder as FolderIcon, Gear, Music, People, Brand } from '../components/Icons'
-import { listFolders, recentSheets } from '../lib/api'
+import { Camera, Chat, Chevron, Folder as FolderIcon, Gear, Music, People, Brand } from '../components/Icons'
+import { getProfile, listFolders, recentSheets, type Profile } from '../lib/api'
 import type { Folder, Stepsheet } from '../lib/types'
 
 /** 첫 화면: 어디로 갈지 고르는 메뉴판 */
 export default function StartPage() {
   const [folders, setFolders] = useState<Folder[]>([])
   const [recent, setRecent] = useState<Stepsheet[]>([])
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [pick, setPick] = useState(false)
+  const nav = useNavigate()
 
   useEffect(() => {
     listFolders().then(setFolders).catch(() => undefined)
     recentSheets(2).then(setRecent).catch(() => undefined)
+    getProfile().then(setProfile).catch(() => undefined)
   }, [])
+
+  const shared = folders.filter((f) => f.kind === 'shared')
+  /** 멤버 톡: 공유 폴더가 하나면 바로, 여럿이면 고르기, 없으면 공유 폴더 메뉴로 */
+  const openChat = () => {
+    if (shared.length === 1) nav(`/folder/${shared[0].id}/chat`)
+    else if (shared.length > 1) setPick(true)
+    else nav('/library?dlg=menu')
+  }
 
   const songs = folders.reduce((n, f) => n + (f.song_count ?? 0), 0)
   const canAdd = folders.some((f) => f.role === 'owner' || f.role === 'editor')
@@ -24,9 +38,14 @@ export default function StartPage() {
       <div className="hero">
         <div className="topbar">
           <h1 className="brand"><Brand /></h1>
-          <Link to="/settings" className="iconbtn" aria-label="설정">
-            <Gear />
-          </Link>
+          <div style={{ display: 'flex', gap: 2 }}>
+            <Link to="/profile" className="iconbtn" aria-label="내 프로필">
+              <Avatar path={profile?.avatar_path} name={profile?.nickname || profile?.display_name || '나'} userId={profile?.id} size={30} />
+            </Link>
+            <Link to="/settings" className="iconbtn" aria-label="설정">
+              <Gear />
+            </Link>
+          </div>
         </div>
         <div className="greet">오늘은 어떤 스텝을 출까요?</div>
       </div>
@@ -59,14 +78,28 @@ export default function StartPage() {
             <span className="tile-title">공유 폴더</span>
             <span className="tile-desc">만들기 · 초대 코드로 참여</span>
           </Link>
-          <Link to="/settings" className="tile">
+          <button type="button" className="tile" onClick={openChat}>
             <span className="tile-ico">
-              <Gear />
+              <Chat />
             </span>
-            <span className="tile-title">설정</span>
-            <span className="tile-desc">글자 크기 · 고대비 · 계정</span>
-          </Link>
+            <span className="tile-title">멤버 톡</span>
+            <span className="tile-desc">{shared.length ? (shared.length === 1 ? `${shared[0].name} 멤버들과 대화` : `${shared.length}개 폴더 · 골라서 들어가기`) : '공유 폴더에 들어가면 쓸 수 있어요'}</span>
+          </button>
         </div>
+
+        <Modal open={pick} title="어느 폴더 톡으로 갈까요?" onClose={() => setPick(false)}>
+          {shared.map((f) => (
+            <Link key={f.id} to={`/folder/${f.id}/chat`} className="card" onClick={() => setPick(false)}>
+              <span className="ico">
+                <Chat />
+              </span>
+              <span className="grow">
+                <span className="t">{f.name}</span>
+              </span>
+              <Chevron />
+            </Link>
+          ))}
+        </Modal>
 
         {recent.length > 0 && (
           <div className="list">

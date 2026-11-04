@@ -110,6 +110,7 @@ export default function ChatPage() {
                   </button>
                 )}
                 <div className="msg-body">
+                  {mine && !cont && <span className="msg-name mine-name">{nameOf(m.user_id)}</span>}
                   {!mine && !cont && (
                     <button type="button" className="msg-name" onClick={() => mem && setDetail(mem)}>
                       {nameOf(m.user_id)}
@@ -123,6 +124,11 @@ export default function ChatPage() {
                     {!mine && <span className="msg-time">{timeOf(m.created_at)}</span>}
                   </div>
                 </div>
+                {mine && (
+                  <Link to="/profile" className="msg-who" aria-label="내 프로필 바꾸기" style={{ visibility: cont ? 'hidden' : 'visible' }}>
+                    {!cont && <Avatar path={mem?.avatar_path} name={nameOf(m.user_id)} userId={m.user_id} size={36} />}
+                  </Link>
+                )}
               </div>
             </div>
           )

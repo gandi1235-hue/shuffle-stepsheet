@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import Avatar, { Character } from '../components/Avatar'
 import { Sheet as Modal } from '../components/ui'
 import { FOLDER_INVITE_TEXT } from '../lib/share'
@@ -13,6 +13,7 @@ import type { Folder, Role } from '../lib/types'
 export default function MembersPage() {
   const { id = '' } = useParams()
   const { session } = useAuth()
+  const nav = useNavigate()
   const [folder, setFolder] = useState<Folder | null>(null)
   const [members, setMembers] = useState<Member[]>([])
   const [err, setErr] = useState('')
@@ -88,7 +89,7 @@ export default function MembersPage() {
         <div>
           {members.map((m) => (
             <div className="member" key={m.user_id}>
-              <button type="button" className="nm who" onClick={() => setDetail(m)} title="자세히">
+              <button type="button" className="nm who" onClick={() => (m.user_id === session?.user.id ? nav('/profile') : setDetail(m))} title={m.user_id === session?.user.id ? '내 프로필 바꾸기' : '자세히'}>
                 <Avatar path={m.avatar_path} name={m.name} userId={m.user_id} size={40} level={lv(m.user_id)} />
                 <span>
                   {m.name}
@@ -116,7 +117,7 @@ export default function MembersPage() {
         </div>
 
         <div className="panel-desc" style={{ marginTop: 18 }}>
-          이름을 누르면 본명과 레벨이 보여요. 레벨은 만든 스텝지 수로 올라요(1장 = Lv.2, Lv.5 2급강사, Lv.10 1급강사). 내 닉네임·아바타는 <Link to="/settings">설정</Link>에서 바꿔요. 폴더 이름 바꾸기·없애기·나가기는 <Link to={`/folder/${id}/edit`}>폴더 편집</Link>에서 해요.
+          이름을 누르면 본명과 레벨이 보여요. 레벨은 만든 스텝지 수로 올라요(1장 = Lv.2, Lv.8 2급강사, Lv.16 1급강사). 내 이름을 누르면 <Link to="/profile">내 프로필</Link>에서 캐릭터·닉네임을 바꿔요. 폴더 이름 바꾸기·없애기·나가기는 <Link to={`/folder/${id}/edit`}>폴더 편집</Link>에서 해요.
         </div>
       </div>
 

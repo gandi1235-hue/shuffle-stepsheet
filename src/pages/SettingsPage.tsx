@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Character } from '../components/Avatar'
-import { LevelUpOverlay } from '../components/LevelUp'
-import { levelLabel, levelOf, titleOf } from '../lib/level'
+import { Chevron } from '../components/Icons'
+import { levelLabel, levelOf } from '../lib/level'
 import TopBar from '../components/TopBar'
-import { getProfile, mySheetCount, shrinkImage, updateProfile, uploadAvatar, type Profile } from '../lib/api'
+import { getProfile, mySheetCount, type Profile } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { usePrefs, type FontSize } from '../lib/prefs'
 import { supabase } from '../lib/supabase'
@@ -26,140 +27,30 @@ export default function SettingsPage() {
     if (r === 'copied') toast('앱 소개 글을 복사했어요. 카카오톡에 붙여 넣으세요.')
   }
 
-  // ── 내 프로필: 닉네임·아바타 ──
+  // ── 내 프로필(요약만, 바꾸기는 /profile) ──
   const [profile, setProfile] = useState<Profile | null>(null)
   const [sheets, setSheets] = useState<number | null>(null)
-  const [demo, setDemo] = useState(false)
   const level = levelOf(sheets ?? 0)
-  const [nick, setNick] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [making, setMaking] = useState(false)
-  const [preview, setPreview] = useState<{ blob: Blob; url: string } | null>(null)
-  const [perr, setPerr] = useState('')
-  const fileRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
-    getProfile()
-      .then((p) => {
-        setProfile(p)
-        setNick(p?.nickname ?? '')
-      })
-      .catch((e) => setPerr(e.message))
+    getProfile().then(setProfile).catch(() => undefined)
     mySheetCount().then(setSheets).catch(() => undefined)
   }, [])
-
-  const saveNick = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const v = nick.trim().slice(0, 20)
-    setSaving(true)
-    try {
-      await updateProfile({ nickname: v })
-      setProfile((p) => (p ? { ...p, nickname: v } : p))
-      setNick(v)
-      toast(v ? `닉네임을 "${v}"로 바꿨어요` : '닉네임을 지웠어요. 본명으로 보여요')
-    } catch (er) {
-      setPerr((er as Error).message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const pick = () => fileRef.current?.click()
-  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]
-    e.target.value = ''
-    if (!f) return
-    setPerr('')
-    setMaking(true)
-    try {
-      const blob = await shrinkImage(f)
-      setPreview({ blob, url: URL.createObjectURL(blob) })
-    } catch (er) {
-      setPerr((er as Error).message)
-    } finally {
-      setMaking(false)
-    }
-  }
-  const useAvatar = async () => {
-    if (!preview) return
-    setSaving(true)
-    try {
-      const path = await uploadAvatar(preview.blob)
-      await updateProfile({ avatar_path: path })
-      setProfile((p) => (p ? { ...p, avatar_path: path } : p))
-      setPreview(null)
-      toast('아바타를 바꿨어요')
-    } catch (er) {
-      setPerr((er as Error).message)
-    } finally {
-      setSaving(false)
-    }
-  }
-  const clearAvatar = async () => {
-    if (!confirm('아바타를 지우고 이름 첫 글자로 보일까요?')) return
-    try {
-      await updateProfile({ avatar_path: null })
-      setProfile((p) => (p ? { ...p, avatar_path: null } : p))
-    } catch (er) {
-      setPerr((er as Error).message)
-    }
-  }
 
   return (
     <div className="screen">
       <TopBar title="설정" back="/" />
       <div className="content">
-        <section className="panel">
-          <div className="panel-title">내 프로필</div>
-          <div className="profile-row">
-            {preview ? <img className="character" src={preview.url} alt="새 아바타 미리보기" style={{ width: 96, height: 128 }} /> : <Character path={profile?.avatar_path} name={profile?.nickname || profile?.display_name || '나'} userId={profile?.id} width={96} />}
-            <div className="grow">
-              <div className="who-name" style={{ fontSize: 17 }}>
-                {profile?.nickname?.trim() || profile?.display_name || '…'} <span className="chip lv">{levelLabel(level)}</span>
-              </div>
-              <div className="panel-desc">본명 {profile?.display_name || '(없음)'} · 멤버들이 이름을 누르면 본명이 보여요</div>
-              <div className="lv-line">
-                <span className="lv-bar"><i /></span>
-                <span className="panel-desc" style={{ margin: 0 }}>{sheets === null ? '…' : `스텝지 ${sheets}장 · 1장 더 만들면 Lv.${level + 1}${titleOf(level + 1) && titleOf(level + 1) !== titleOf(level) ? ` ${titleOf(level + 1)}` : ''}`}</span>
-              </div>
-              <button type="button" className="btn" style={{ alignSelf: 'flex-start', minHeight: 34, fontSize: 13, marginTop: 6 }} onClick={() => setDemo(true)}>
-                ✨ 레벨업 연출 보기
-              </button>
-            </div>
-          </div>
-          {preview ? (
-            <div className="row-btns" style={{ display: 'flex', gap: 8 }}>
-              <button type="button" className="btn" style={{ flex: 1 }} onClick={() => setPreview(null)} disabled={saving}>
-                다시
-              </button>
-              <button type="button" className="btn primary" style={{ flex: 2 }} onClick={useAvatar} disabled={saving}>
-                {saving ? '저장 중…' : '이 아바타로 할래요'}
-              </button>
-            </div>
-          ) : (
-            <div className="row-btns" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button type="button" className="btn primary" style={{ flex: 2, minWidth: 160 }} onClick={pick} disabled={making}>
-                {making ? '…' : '캐릭터 사진 올리기'}
-              </button>
-              {profile?.avatar_path && (
-                <button type="button" className="btn" style={{ flex: 1 }} onClick={clearAvatar} disabled={making}>
-                  지우기
-                </button>
-              )}
-            </div>
-          )}
-          <input ref={fileRef} type="file" accept="image/*" className="sr-only" onChange={onFile} />
-          <form className="editrow" onSubmit={saveNick}>
-            <input aria-label="닉네임" value={nick} onChange={(e) => setNick(e.target.value)} maxLength={20} placeholder="닉네임 (비우면 본명)" />
-            <button type="submit" className="btn primary" disabled={saving || nick.trim() === (profile?.nickname ?? '')}>
-              저장
-            </button>
-          </form>
-          {perr && <div className="error">{perr}</div>}
-          <div className="panel-desc">캐릭터 그림이나 사진을 올리면 멤버들에게 그걸로 보여요(세로 전신 그림이 잘 어울려요). 스텝지를 한 장 만들 때마다 레벨이 오르고, Lv.5부터 2급강사, Lv.10부터 1급강사 칭호가 붙어요.</div>
-        </section>
-        {demo && <LevelUpOverlay info={{ from: level, to: level + 1, profile }} onClose={() => setDemo(false)} />}
-
-        <section className="panel">
+        <Link to="/profile" className="card" style={{ marginBottom: 12 }}>
+          <Character path={profile?.avatar_path} name={profile?.nickname || profile?.display_name || '나'} userId={profile?.id} width={48} />
+          <span className="grow">
+            <span className="t">
+              {profile?.nickname?.trim() || profile?.display_name || '내 프로필'} <span className="chip lv">{levelLabel(level)}</span>
+            </span>
+            <span className="s">캐릭터 그림 · 닉네임 · 레벨 보기와 바꾸기</span>
+          </span>
+          <Chevron />
+        </Link>
+                <section className="panel">
           <div className="panel-title">글자 크기</div>
           <div className="seg" role="radiogroup" aria-label="글자 크기">
             {SIZES.map(([k, label, sample]) => (

@@ -13,6 +13,7 @@ import FolderEditPage from './pages/FolderEditPage'
 import ChatPage from './pages/ChatPage'
 import SyncPage from './pages/SyncPage'
 import SettingsPage from './pages/SettingsPage'
+import ProfilePage from './pages/ProfilePage'
 import SheetPage from './pages/SheetPage'
 import StartPage from './pages/StartPage'
 import JoinPage from './pages/JoinPage'
@@ -46,6 +47,7 @@ function Gate() {
       <Route path="/add" element={<AddPage />} />
       <Route path="/edit/:id" element={<AddPage />} />
       <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/profile" element={<ProfilePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </>

@@ -8,26 +8,39 @@ import { Character } from './Avatar'
 
 export type LevelUpInfo = { from: number; to: number; profile: Profile | null }
 
-/** 레벨업 연출: 캐릭터가 환하게 빛나고 반짝이가 흩어짐. 누르거나 4초 뒤에 사라짐 */
+/** 레벨업 연출: 번쩍 → 빛줄기·색종이·반짝이·물결 속에 캐릭터가 환하게 빛남. 누르거나 5.5초 뒤에 사라짐 */
 export function LevelUpOverlay({ info, onClose }: { info: LevelUpInfo; onClose: () => void }) {
   useEffect(() => {
     haptic([20, 40, 20])
-    const t = setTimeout(onClose, 4200)
+    const t = setTimeout(onClose, 5500)
     return () => clearTimeout(t)
   }, [onClose])
   const name = info.profile?.nickname?.trim() || info.profile?.display_name || '나'
   const title = titleOf(info.to)
   const newTitle = title && title !== titleOf(info.from)
+  const colors = ['#ffd166', '#ff7ab3', '#7ad7ff', '#d9376e', '#b5f28a', '#fff']
   return (
     <div className="levelup" role="dialog" aria-label="레벨 업" onClick={onClose}>
+      <div className="levelup-flash" />
+      <div className="levelup-rays" />
+      {Array.from({ length: 48 }, (_, i) => (
+        <span key={i} className="confetti" style={{ ['--i' as string]: i, ['--x' as string]: (i * 37) % 100, ['--r' as string]: 360 + ((i * 97) % 720), ['--c' as string]: colors[i % colors.length], width: 6 + (i % 3) * 3, height: 10 + (i % 4) * 3 }} />
+      ))}
       <div className="levelup-card">
-        <div className="levelup-title">LEVEL UP!</div>
+        <div className="levelup-title" aria-label="LEVEL UP!">
+          {'LEVEL UP!'.split('').map((ch, i) => (
+            <span key={i} style={{ ['--i' as string]: i }}>{ch === ' ' ? '\u00a0' : ch}</span>
+          ))}
+        </div>
         <div className="levelup-stage">
-          {Array.from({ length: 12 }, (_, i) => (
+          {[0, 1, 2].map((i) => (
+            <span key={i} className="levelup-ring" style={{ ['--i' as string]: i }} />
+          ))}
+          {Array.from({ length: 18 }, (_, i) => (
             <span key={i} className="spark" style={{ ['--i' as string]: i }} />
           ))}
           <div className="levelup-glow" />
-          <Character path={info.profile?.avatar_path} name={name} userId={info.profile?.id} width={132} className="shine" />
+          <Character path={info.profile?.avatar_path} name={name} userId={info.profile?.id} width={140} className="shine" />
         </div>
         <div className="levelup-lv">
           <span className="old">Lv.{info.from}</span>
