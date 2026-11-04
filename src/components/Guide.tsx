@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ONBOARD_KEY } from '../lib/tour'
+import { applyPrefs, loadPrefs, type Theme } from '../lib/prefs'
 
 /** ==이렇게== 감싼 구절을 형광펜으로 */
 function hl(text: string) {
@@ -11,7 +12,7 @@ const isIOS = () => /iPhone|iPad|iPod/i.test(navigator.userAgent)
 const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true
 
 export type Deck = 'intro' | 'basic' | 'advanced'
-type Card = { emoji: string; bg: string; title: string; desc: string; tips?: string[]; hot?: boolean }
+type Card = { emoji: string; bg: string; title: string; desc: string; tips?: string[]; hot?: boolean; themePick?: boolean }
 
 const INSTALL_TIPS = () =>
   isStandalone()
@@ -22,6 +23,7 @@ const INSTALL_TIPS = () =>
 
 /** 처음 설치했을 때 보는 소개 5장 (친구 소개 카드뉴스와 같은 내용) */
 const INTRO: Card[] = [
+  { emoji: '🎨', bg: 'linear-gradient(135deg, #0a0a0b 0 50%, #d9376e 50%)', title: '어떤 색이 좋아요?', desc: '핑크와 검정 중에 골라요. ==나중에 설정에서 언제든== 바꿀 수 있어요.', themePick: true },
   { emoji: '🗂️', bg: 'linear-gradient(135deg, #ffd1e0, #ffb27a)', title: '스텝지 파일, 너무 많아 못 찾겠죠?', desc: '카톡방에 흩어진 사진·파일 그만 뒤지세요. ShuffleBox에 모아 두면 ==노래 이름으로 바로 찾아요==.', tips: ['곡 이름·창작자로 검색', '내 폴더 / 동호회 폴더로 정리', '같은 곡 여러 버전도 한 묶음'] },
   { emoji: '📷', bg: 'linear-gradient(135deg, #7cc4ff, #b39dff)', title: '찍어도 되고, 있는 파일도 돼요', desc: '종이 스텝지를 바로 찍거나, 카톡으로 받은 사진·캡처를 올리면 ==AI가 읽어서== 줄 단위 스텝지로 만들어요.', tips: ['손글씨·프린트·칠판 다 돼요', '여러 장 한 번에', '틀린 글자는 눌러서 바로 수정'] },
   { emoji: '🎬', bg: 'linear-gradient(135deg, #5fd39b, #ffd166)', title: '영상·음악까지, 싱크로 맞춰 연습', desc: '유튜브 링크, 영상 파일, 음원 파일을 붙이면 ==AI가 보고 들어서 박자를 맞춰요==. 재생하면 지금 출 줄이 따라와요.', tips: ['느리게 재생 · 구간 반복', '줄 누르면 그 자리로 이동', '영상은 스텝지 옆에 두고 보기'] },
@@ -72,6 +74,13 @@ export default function Guide({ first = false, deck: initial = first ? 'intro' :
     onClose(tour)
   }
   const go = (d: number) => setI((k) => Math.max(0, Math.min(cards.length - 1, k + d)))
+  const [theme, setTheme] = useState<Theme>(() => loadPrefs().theme ?? 'rose')
+  const pickTheme = (t: Theme) => {
+    const next = { ...loadPrefs(), theme: t }
+    localStorage.setItem('prefs', JSON.stringify(next))
+    applyPrefs(next)
+    setTheme(t)
+  }
   return (
     <div className="scrim center" onClick={() => finish(false)}>
       <div
@@ -107,6 +116,17 @@ export default function Guide({ first = false, deck: initial = first ? 'intro' :
         </div>
         <h2>{c.title}</h2>
         <p>{hl(c.desc)}</p>
+        {c.themePick && (
+          <div className="theme-pick" role="radiogroup" aria-label="색 테마">
+            {([['rose', '핑크', '로즈 + 크림'], ['netflix', '검정', '검정 + 빨강']] as [Theme, string, string][]).map(([k, label, desc]) => (
+              <button key={k} type="button" role="radio" aria-checked={theme === k} className={theme === k ? 'on' : ''} onClick={() => pickTheme(k)}>
+                <span className={`swatch ${k}`} aria-hidden="true" />
+                <b>{label}</b>
+                <small>{desc}</small>
+              </button>
+            ))}
+          </div>
+        )}
         {c.tips && (
           <ul className="card-tips">
             {c.tips.map((t) => (

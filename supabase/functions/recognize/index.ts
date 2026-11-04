@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
     // 모델 이름이 바뀌어도 되게: 키로 쓸 수 있는 모델 목록에서 이미지 생성 모델을 찾아 차례로 시도
     if (body.avatar?.data) {
       if (!openaiKey && !geminiKey) throw new Error("AI 아바타는 OpenAI 키나 Gemini 키가 있어야 만들 수 있어요");
-      const prompt = "Turn the person in this photo into a cute chibi-style full-body 3D-cartoon dance character (soft Pixar-like sticker look). Big head and small body (about 2.5 heads tall), head near the top of the frame, whole body visible down to the shoes, standing in a playful shuffle-dance pose on a simple floor, facing the camera, smiling. Keep their recognizable features: hair style and color, glasses, face shape, skin tone, age, and the outfit colors from the photo. Plain soft pastel background, portrait 3:4, no text, no watermark.";
+      const prompt = "Turn the person in this photo into a cute chibi-style full-body anime/webtoon illustration of a dancer (clean 2D cel-shaded look, soft gradients, glossy highlights, NOT 3D). Proportions about 3 heads tall, head near the top of the frame, whole body visible down to the shoes. Mid-dance pose, full of energy: one foot lifted, arm pointing or raised, big joyful smile with eyes open or happily closed. Keep their recognizable features: hair style and color, glasses, face shape, skin tone, age, and the outfit colors from the photo. Setting: standing on a glowing, reflective round stage floor under soft spotlights, dreamy lavender-purple stage background with warm bokeh lights, sparkles, glowing pink/lavender neon music notes floating around, and light swirl motion trails around the feet. Portrait 3:4, no text, no watermark.";
       const errors: string[] = [];
       // 1) OpenAI 키가 있으면 GPT 이미지(사진 편집: 얼굴 특징을 유지하는 input_fidelity=high)로 먼저
       if (openaiKey) {

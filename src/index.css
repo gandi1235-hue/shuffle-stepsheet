@@ -728,6 +728,14 @@ mark.hl { background: linear-gradient(transparent 40%, #ffe66d 40%); color: inhe
 html[data-theme="netflix"] mark.hl { background: linear-gradient(transparent 40%, #ffd84d 40%); }
 .onboard.card-news .onboard-actions { padding: 0 18px; box-sizing: border-box; }
 .onboard.card-news .dots { margin: 2px 0 6px; }
+.theme-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: calc(100% - 44px); margin: 4px 22px 0; }
+.theme-pick button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px 10px; border: 2px solid var(--line); border-radius: var(--r-lg); background: var(--surface); color: var(--muted); cursor: pointer; font: inherit; }
+.theme-pick button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
+.theme-pick .swatch { width: 64px; height: 40px; border-radius: 10px; border: 1px solid rgba(0,0,0,0.08); }
+.theme-pick .swatch.rose { background: linear-gradient(135deg, #faf5f3 0 45%, #d9376e 45%); }
+.theme-pick .swatch.netflix { background: linear-gradient(135deg, #0a0a0b 0 45%, #e50914 45%); }
+.theme-pick b { font-size: 17px; }
+.theme-pick small { font-size: 12px; }
 .onboard.card-news.hot { box-shadow: 0 0 0 3px var(--accent), var(--shadow-float); }
 .onboard.card-news.hot h2 { color: var(--accent-ink); }
 .onboard.card-news.hot .card-emoji { animation: bump 1.2s ease-in-out infinite; }

@@ -8,7 +8,7 @@ import HelpButton from '../components/HelpButton'
 import Tour from '../components/Tour'
 import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
 import { Copy, Doc, Edit, LayoutSide, LayoutTop, More, Photo, Print, Share } from '../components/Icons'
-import { copySheet, deleteSheet, getFolder, getSheet, listFolders, moveSheet, setFinalized, signedUrl, updateMemo, updateSync } from '../lib/api'
+import { copySheet, deleteSheet, getFolder, getSheet, listFolders, listVersions, moveSheet, setFinalized, signedUrl, updateMemo, updateSync } from '../lib/api'
 import { activeLine, eventsOf, savedBpm, withSync, type Folder, type Stepsheet } from '../lib/types'
 import { bpmFromEvents, defaultEvents } from '../lib/sync'
 import { useMedia, usePrefs } from '../lib/prefs'
@@ -140,14 +140,36 @@ export default function SheetPage() {
     setFolders(fs.filter((f) => (f.role === 'owner' || f.role === 'editor') && f.id !== sheet.folder_id))
     setMenu(mode)
   }
+  /** 복사·옮기기. 이 노래에 버전이 여럿이면 물어보고 전부 같은 모양(한 노래 아래 여러 버전)으로 가져감 */
   const doCopyOrMove = async (f: Folder) => {
     const move = menu === 'move'
+    const verb = move ? '옮길' : '복사할'
     setBusy(true)
     try {
-      const saved = move ? await moveSheet(sheet.id, f.id) : await copySheet(sheet.id, f.id)
+      const versions = await listVersions(sheet.song_id)
+      let targets = [sheet.id]
+      if (versions.length > 1 && confirm(`이 노래엔 버전이 ${versions.length}개 있어요.\n${versions.length}개 모두 함께 ${verb}까요?\n(취소하면 이 버전만)`)) targets = versions.map((v) => v.id)
+      let ok = 0
+      let dup = 0
+      let lastId = ''
+      for (const id of targets) {
+        try {
+          const saved = move ? await moveSheet(id, f.id) : await copySheet(id, f.id)
+          ok++
+          if (id === sheet.id || !lastId) lastId = saved.id
+        } catch (e) {
+          if ((e as Error).message === 'DUPLICATE') dup++
+          else throw e
+        }
+      }
       setMenu(null)
-      toast(move ? `"${f.name}" 폴더로 옮겼어요` : `"${f.name}" 폴더에 복사했어요`)
-      nav(`/sheet/${saved.id}`, { replace: move })
+      const where = move ? `"${f.name}" 폴더로 옮겼어요` : `"${f.name}" 폴더에 복사했어요`
+      if (!ok) {
+        toast('저쪽 폴더에 같은 스텝지가 이미 있어서 그대로 뒀어요')
+        return
+      }
+      toast(targets.length > 1 ? `${ok}개 ${where}${dup ? ` · ${dup}개는 이미 있어서 건너뛰었어요` : ''}` : where)
+      nav(`/sheet/${lastId}`, { replace: move })
     } catch (e) {
       toast((e as Error).message)
     } finally {

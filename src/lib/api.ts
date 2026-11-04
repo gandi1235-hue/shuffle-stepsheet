@@ -503,10 +503,43 @@ export async function updateMemo(id: string, memo: string) {
   if (error) throw error
 }
 
-/** 스텝지를 다른 폴더로 복사 (음원·사진 파일도 새 폴더 경로로 다시 올림) */
+/** 같은 노래의 버전들(스텝지 전부) */
+export async function listVersions(songId: string): Promise<Stepsheet[]> {
+  const { data } = await supabase.from('stepsheets').select('*').eq('song_id', songId).order('created_at')
+  return ((data as Stepsheet[]) ?? []).map((sh) => ({ ...sh, lines: normalizeLines(sh.lines) }))
+}
+
+/** 내용이 같은지 비교하려고 줄·스텝을 글로 눌러 담은 키 (공백·대소문자 무시) */
+export function contentKey(lines: Line[]): string {
+  return lines
+    .map((l) => (l.kind && l.kind !== 'steps' ? `[${l.kind}:${l.label ?? ''}]` : l.steps.map((st) => `${st.name}/${st.beats}`).join(',')))
+    .join('|')
+    .replace(/\s+/g, '')
+    .toLowerCase()
+}
+
+/**
+ * 저쪽 폴더에 "같은 원본"인 스텝지가 이미 있는지: 같은 노래(제목·가수)에서 사진 파일이 같거나 내용(줄·스텝)이 같으면 같은 원본으로 봄.
+ * 편집만 조금 다른 복사본이 두 개 생기지 않게 하려는 것. 있으면 그 스텝지 id
+ */
+export async function findSameContent(folderId: string, title: string, artist: string, src: Pick<Stepsheet, 'lines' | 'photo_paths'>): Promise<string | null> {
+  const { data: song } = await supabase.from('songs').select('id').eq('folder_id', folderId).eq('title', title.trim()).eq('artist', artist.trim()).maybeSingle()
+  if (!song) return null
+  const others = await listVersions(song.id)
+  const myPhotos = new Set((src.photo_paths ?? []).map((p) => p.split('/').pop()))
+  const myKey = contentKey(src.lines)
+  for (const o of others) {
+    if ((o.photo_paths ?? []).some((p) => myPhotos.has(p.split('/').pop()))) return o.id
+    if (myKey && contentKey(o.lines) === myKey) return o.id
+  }
+  return null
+}
+
+/** 스텝지를 다른 폴더로 복사 (음원·사진 파일도 새 폴더 경로로 다시 올림). 저쪽에 같은 원본이 이미 있으면 DUPLICATE */
 export async function copySheet(id: string, targetFolderId: string): Promise<Stepsheet> {
   const src = await getSheet(id)
   if (!src) throw new Error('스텝지를 찾을 수 없어요')
+  if (await findSameContent(targetFolderId, src.song?.title ?? '', src.song?.artist ?? '', src)) throw new Error('DUPLICATE')
   const refetch = async (bucket: 'audio' | 'photos', path: string) => {
     const url = await signedUrl(bucket, path)
     const blob = await (await fetch(url)).blob()

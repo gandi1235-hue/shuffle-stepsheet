@@ -115,7 +115,7 @@ export default function AddPage() {
       }
     }
     setImporting('')
-    const parts = [ok ? `${ok}개 불러왔어요` : '', dup ? `${dup}개는 이미 있어서 건너뛰었어요` : '', failed.length ? `${failed.length}개 실패 (${failed[0]})` : ''].filter(Boolean)
+    const parts = [ok ? `${ok}개 불러왔어요` : '', dup ? `${dup}개는 같은 스텝지가 이미 있어서 건너뛰었어요` : '', failed.length ? `${failed.length}개 실패 (${failed[0]})` : ''].filter(Boolean)
     if (ok) haptic(20)
     toast(parts.join(' · ') || '가져온 게 없어요')
     if (ok === 1 && items.length === 1) nav(`/sheet/${lastId}`, { replace: true })
