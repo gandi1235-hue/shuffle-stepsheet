@@ -360,26 +360,24 @@ export default function SyncPage() {
                   </div>
                   {(!beatsOk || playingYt) && order.length > 1 && (
                     <button type="button" className="btn" onClick={markSecond} title="박자가 틀릴 때만: 둘째 줄이 시작되는 순간 누르면 박자를 다시 재요">
-                      둘째 줄 시작
-                      <br />
-                      <small>박자 재기</small>
+                      둘째 줄 시작 <small>(박자 재기)</small>
                     </button>
                   )}
+                </div>
+                <div className="row">
                   <button type="button" className="btn" onClick={() => setAskOpen(true)}>
-                    순서가
-                    <br />
-                    달라요
+                    순서가 달라요
                   </button>
                   <button type="button" className="btn" onClick={undo} disabled={!history.length}>
                     되돌리기
                   </button>
+                  <button type="button" className="btn" onClick={restart}>
+                    처음부터
+                  </button>
                 </div>
                 <div className="row">
-                  <button type="button" className="btn" onClick={restart}>
-                    처음부터 다시
-                  </button>
                   <button type="button" className="btn save" onClick={save} disabled={saving || !canEdit}>
-                    {saving ? '저장 중…' : '저장'}
+                    {saving ? '저장 중…' : '동기화 저장'}
                   </button>
                 </div>
               </>
