@@ -178,6 +178,8 @@ export default function AddPage() {
       setData({ ...emptyRecognized(), ...r, lines: r.lines.length ? r.lines : emptyRecognized().lines })
       setTexts({})
       setStage('edit')
+      // 두 AI가 같이 읽었으면: 다르게 읽은 칸만 노란색이니 그것만 확인하면 됨
+      if (r.cross) toast(r.cross.differ > 0 ? `AI 둘이 다르게 읽은 ${r.cross.differ}곳을 노란색으로 표시했어요. 그 칸만 확인하세요` : `AI 둘이 ${r.cross.agree}개 스텝을 똑같이 읽었어요`)
     } catch (e) {
       setErr(`사진을 읽지 못했어요: ${(e as Error).message}`)
       setStage('photo')

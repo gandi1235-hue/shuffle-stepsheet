@@ -6,6 +6,7 @@
 //   ANTHROPIC_API_KEY : Claude API 키 (https://console.anthropic.com)
 //   OPENAI_API_KEY    : OpenAI 키 (https://platform.openai.com/api-keys) — 있으면 모든 일(사진 읽기·직접 요청·말로 고치기·아바타·받아 적기)에 GPT를 먼저 씀
 // 글/사진 읽기 우선순위: OpenAI(GPT, 추론 xhigh) → Claude → Gemini. 앞 것이 실패하면 다음 것으로.
+// 사진 읽기는 용어 사전(표준 스텝 이름 + 이 사용자의 스텝지에 자주 나오는 이름)을 주고, OpenAI·Claude 키가 둘 다 있으면 둘이 동시에 읽어 다른 스텝을 노란색으로 표시(교차 확인). verify:true면 사진과 다시 대조하는 검산도 한 번 더 함
 // 기본은 빠른 미니 모델(추론 low), 앱에서 "고급 추론"을 켜면 가장 좋은 모델(추론 xhigh). 사진 읽기는 항상 가장 좋은 모델(high).
 // 선택: OPENAI_TEXT_MODEL / OPENAI_FAST_MODEL (없으면 키로 쓸 수 있는 최신 gpt-5 계열·미니 자동 선택), OPENAI_REASONING (고급, 기본 xhigh), OPENAI_FAST_REASONING (기본 low), OPENAI_PHOTO_REASONING (기본 high), OPENAI_VIDEO_REASONING (고급 영상, 기본 xhigh),
 //       OPENAI_STT_MODEL (기본 gpt-4o-transcribe), OPENAI_IMAGE_MODEL (기본 gpt-image-1), OPENAI_IMAGE_QUALITY (기본 medium),
@@ -70,7 +71,7 @@ Deno.serve(async (req) => {
     if (!who?.id) {
       return new Response(JSON.stringify({ error: "로그인이 필요해요" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string; tier?: number }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string }; video_sync?: { frames?: { media_type: string; data: string }[]; yt_url?: string; audio?: { media_type: string; data: string }; step?: number; duration?: number; bpm?: number; request?: string }; yt_frames?: string; deep?: boolean; async?: boolean; sheet_id?: string };
+    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string; tier?: number }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string }; video_sync?: { frames?: { media_type: string; data: string }[]; yt_url?: string; audio?: { media_type: string; data: string }; step?: number; duration?: number; bpm?: number; request?: string }; yt_frames?: string; deep?: boolean; async?: boolean; sheet_id?: string; verify?: boolean };
     const keys = detectKeys();
     keys.deep = body.deep === true; // 고급 추론(xhigh) 켰는지. 기본은 빠른 모델
     const { gemini: geminiKey, openai: openaiKey } = keys;
@@ -383,11 +384,63 @@ plan 항목 종류:
 
     const images = body.images ?? [];
     if (!images.length) throw new Error("이미지가 없습니다");
-    const text = await askAI(images, ASK, SYSTEM, keys, "photo");
+    // 용어 사전: 표준 스텝 이름 + 이 사용자의 스텝지에 자주 나오는 이름(동호회 용어). 손글씨가 애매할 때 엉뚱한 글자로 읽는 걸 줄임
+    const vocab = await userVocab(auth, apikey);
+    const sysPhoto = `${SYSTEM}
 
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    const json = JSON.parse(text.slice(start, end + 1));
+[용어 사전]
+- 셔플 표준 스텝 이름(참고 목록, 여기 없는 이름도 있을 수 있음): ${STEP_VOCAB.join(", ")}
+- 글자가 흐리거나 애매할 때, 사전의 이름과 한두 글자만 다르면 사전 이름으로 읽습니다(예: "런닝면"→"런닝맨", "티스탭"→"티스텝"). 사전과 전혀 다른 이름은 원문 그대로 둡니다.${vocab.length ? `
+- 이 사용자의 스텝지에 자주 나오는 이름(동호회 용어·약어, 손글씨가 애매하면 이 중 하나일 가능성이 높음): ${vocab.join(", ")}` : ""}`;
+    const parse = (t: string) => {
+      const s0 = t.indexOf("{"); const e0 = t.lastIndexOf("}");
+      return JSON.parse(t.slice(s0, e0 + 1));
+    };
+    // 교차 확인: OpenAI와 Claude 키가 둘 다 있으면 같은 사진을 Claude도 동시에 읽고, 두 결과가 다른 스텝을 노란색(uncertain)으로 표시
+    const second = keys.openai && keys.claude
+      ? viaClaude(images, keys.claude, ASK, sysPhoto).catch((e) => {
+        console.error(`[photo] cross-check read failed: ${(e as Error).message.slice(0, 160)}`);
+        return "";
+      })
+      : Promise.resolve("");
+    const [text, text2] = await Promise.all([askAI(images, ASK, sysPhoto, keys, "photo"), second]);
+    let json = parse(text);
+    if (text2 && lastProvider !== "claude" && Array.isArray(json.lines)) {
+      try {
+        const other = parse(text2);
+        const r = crossCheck(json, other);
+        json = r.json;
+        json.cross = { differ: r.differ, agree: r.agree, other_lines: Array.isArray(other.lines) ? other.lines.length : 0 };
+        console.log(`[photo] cross-check: agree ${r.agree}, differ ${r.differ}, lines ${json.lines.length} vs ${json.cross.other_lines}`);
+      } catch (e) {
+        console.error(`[photo] cross-check compare failed: ${(e as Error).message.slice(0, 160)}`);
+      }
+    }
+    // 검산(선택, verify:true일 때만): 1차 결과를 사진과 한 줄씩 다시 대조해 빠진 줄·오독·박수를 고침. 시간이 배로 걸려 기본은 끔
+    if (body.verify === true && Array.isArray(json.lines) && json.lines.length) {
+      try {
+        const ask2 = `아래는 이 스텝지 사진을 1차로 읽은 결과(JSON)입니다. 사진을 처음부터 끝까지 한 줄씩 다시 대조해 검산해 주세요.
+- 빠진 줄·빠진 스텝·빠진 메모(빨간 글씨, 괄호 설명, 화살표 뒤 설명)가 있으면 넣습니다
+- 잘못 읽은 글자(특히 스텝 이름과 숫자)는 사진대로 고칩니다. 용어 사전의 이름과 한두 글자만 다르면 사전 이름으로 고칩니다
+- 박수는 사진에 적힌 숫자만 씁니다. 없는 숫자를 지어내지 않습니다
+- 줄 순서, 구간 제목, 반복·쉼 지시가 사진과 같은지 봅니다
+확실한 오류만 고치고 나머지는 그대로 둡니다. 고친 최종 JSON만 출력합니다(설명 금지).
+
+[1차 결과]
+${JSON.stringify(json)}`;
+        const t2 = await askAI(images, ask2, sysPhoto, keys, "photo");
+        const j2 = parse(t2);
+        const n1 = json.lines.length;
+        const n2 = Array.isArray(j2.lines) ? j2.lines.length : 0;
+        // 검산이 줄을 40% 넘게 날려 버리면 믿지 않음
+        if (n2 >= Math.max(1, Math.floor(n1 * 0.6))) {
+          console.log(`[photo] verified: lines ${n1} → ${n2}${JSON.stringify(j2) === JSON.stringify(json) ? " (변경 없음)" : ""}`);
+          json = j2;
+        } else console.error(`[photo] verify dropped too many lines (${n1} → ${n2}), keeping first pass`);
+      } catch (e) {
+        console.error(`[photo] verify failed, keeping first pass: ${(e as Error).message.slice(0, 160)}`);
+      }
+    }
 
     return new Response(JSON.stringify(json), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -445,6 +498,98 @@ function detectKeys(): Keys {
   return { openai, claude, gemini, geminis };
 }
 const ASK = "이 스텝지를 위 양식의 JSON으로 정리해 주세요.";
+/** 셔플댄스에서 흔히 쓰는 스텝 이름(표기 표준화·오독 교정용 사전) */
+const STEP_VOCAB = [
+  "런닝맨", "리버스 런닝맨", "백 런닝맨", "사이드 런닝맨", "RM힐", "티스텝", "더블 티", "싱글 티", "싱싱더블", "찰스턴", "사이드 찰스턴", "백 찰스턴", "크리스크로스", "킥볼체인지", "킥", "하이킥", "사이드킥", "백킥",
+  "스핀", "턴", "하프턴", "풀턴", "피벗", "글라이드", "문워크", "슬라이드", "점핑힐", "힐", "힐토", "토힐", "힐터치", "토터치", "쿵쿵", "쿵쿵따", "트위스트", "스텝 터치", "사이드 스텝", "스톰프", "스탬프",
+  "니업", "바운스", "브이스텝", "V스텝", "W", "X", "Y", "크로스", "백 크로스", "프론트 크로스", "점프", "롤링", "웨이브", "와블", "셔플", "스케이트", "스케이팅", "박스 스텝", "그레이프바인", "차차", "맘보", "발바꾸기", "발 모으기", "제자리", "포즈", "마무리 포즈",
+];
+
+type RStep = { name?: string; beats?: string; uncertain?: boolean; [k: string]: unknown };
+type RLine = { kind?: string; steps?: RStep[]; label?: string; [k: string]: unknown };
+/**
+ * 교차 확인: 두 AI가 읽은 결과를 줄 단위로 맞춰 보고(줄 수가 다르면 비슷한 줄끼리 정렬), 이름이나 박수가 다른 스텝에 uncertain 표시.
+ * 짝이 없는 줄(한쪽만 읽은 줄)은 그 줄의 스텝 전부를 표시. 첫 결과(json)의 내용은 바꾸지 않고 표시만 더함
+ */
+function crossCheck(json: { lines: RLine[] }, other: { lines?: RLine[] }): { json: { lines: RLine[] }; agree: number; differ: number } {
+  const norm = (v: unknown) => String(v ?? "").toLowerCase().replace(/[\s\-_·.,()/×x*]/g, "");
+  const beatsOf = (v: unknown) => (String(v ?? "").match(/\d+/)?.[0] ?? "");
+  const key = (l: RLine) => (l.kind && l.kind !== "steps" ? norm(l.label) : (l.steps ?? []).map((st) => norm(st.name)).join("|"));
+  const sim = (a: string, b: string) => {
+    if (!a && !b) return 1;
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+    const A = new Set(a.split("|")); const B = new Set(b.split("|"));
+    let hit = 0;
+    for (const x of A) if (B.has(x) || [...B].some((y) => x.includes(y) || y.includes(x))) hit++;
+    return hit / Math.max(A.size, B.size);
+  };
+  const A = json.lines; const B = other.lines ?? [];
+  // 줄 정렬: 동적 계획법(가장 비슷한 줄끼리 순서대로 짝짓기)
+  const n = A.length; const m = B.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  const ka = A.map(key); const kb = B.map(key);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      const s0 = sim(ka[i], kb[j]);
+      dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1], (s0 >= 0.4 ? s0 : 0) + dp[i + 1][j + 1]);
+    }
+  }
+  const pair = new Map<number, number>();
+  for (let i = 0, j = 0; i < n && j < m;) {
+    const s0 = sim(ka[i], kb[j]);
+    if (s0 >= 0.4 && Math.abs(dp[i][j] - (s0 + dp[i + 1][j + 1])) < 1e-9) { pair.set(i, j); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
+    else j++;
+  }
+  let agree = 0; let differ = 0;
+  const lines = A.map((l, i) => {
+    if (l.kind && l.kind !== "steps") return l;
+    const j = pair.get(i);
+    const bs = j === undefined ? [] : (B[j].steps ?? []);
+    const steps = (l.steps ?? []).map((st, k) => {
+      if (!String(st.name ?? "").trim()) return st;
+      const bn = norm(st.name);
+      // 같은 자리, 없으면 그 줄 안에서 이름이 같은 스텝
+      const cand = bs[k] && (norm(bs[k].name) === bn || norm(bs[k].name).includes(bn) || bn.includes(norm(bs[k].name))) ? bs[k] : bs.find((o) => norm(o.name) === bn);
+      const ba = beatsOf(st.beats); const bb = cand ? beatsOf(cand.beats) : "";
+      const ok = !!cand && (!ba || !bb || ba === bb);
+      if (ok) agree++;
+      else differ++;
+      return ok ? st : { ...st, uncertain: true };
+    });
+    return { ...l, steps };
+  });
+  return { json: { ...json, lines }, agree, differ };
+}
+
+/**
+ * 이 사용자가 볼 수 있는 스텝지들에서 자주 쓰는 스텝 이름을 모아 용어 사전으로 (동호회 고유 용어·약어 학습).
+ * 사용자 토큰으로 조회하므로 권한 있는 스텝지만. 실패하면 빈 배열
+ */
+async function userVocab(auth: string, apikey: string): Promise<string[]> {
+  try {
+    const res = await fetch(`${Deno.env.get("SUPABASE_URL")}/rest/v1/stepsheets?select=lines&order=updated_at.desc&limit=300`, { headers: { apikey, Authorization: auth } });
+    if (!res.ok) return [];
+    const rows = await res.json() as { lines?: unknown }[];
+    const count = new Map<string, number>();
+    for (const r of rows) {
+      for (const l of (Array.isArray(r.lines) ? r.lines : []) as { steps?: { name?: string }[] }[]) {
+        for (const st of l?.steps ?? []) {
+          const n = String(st?.name ?? "").replace(/\s+/g, " ").trim();
+          if (n.length < 2 || n.length > 24) continue;
+          count.set(n, (count.get(n) ?? 0) + 1);
+        }
+      }
+    }
+    const top = [...count.entries()].filter(([n, c]) => c >= 2 && !STEP_VOCAB.includes(n)).sort((a, b) => b[1] - a[1]).slice(0, 80).map(([n]) => n);
+    console.log(`[photo] vocab: ${rows.length} sheets → ${top.length} club terms`);
+    return top;
+  } catch (e) {
+    console.error(`[photo] vocab failed: ${(e as Error).message}`);
+    return [];
+  }
+}
 
 /** 유튜브 주소(watch?v=, youtu.be/, shorts/, embed/)에서 영상 ID */
 function ytVideoId(url: string): string | null {
@@ -622,6 +767,7 @@ const jobs = {
 type Keys = { openai?: string; claude?: string; gemini?: string; geminis: string[]; deep?: boolean };
 type Task = "photo" | "plan" | "edit" | "artist" | "video";
 
+let lastProvider = ""; // askAI가 마지막으로 성공한 제공자 이름 (교차 확인 때 같은 모델끼리 비교하지 않으려고)
 /** 키가 있는 모델을 OpenAI → Claude → Gemini 순으로 시도. 앞 것이 실패하면(모델 없음·한도·시간 초과) 다음 것으로 */
 async function askAI(images: Img[], ask: string, sys: string, keys: Keys, task: Task): Promise<string> {
   const tries: { name: string; run: () => Promise<string> }[] = [];
@@ -635,6 +781,7 @@ async function askAI(images: Img[], ask: string, sys: string, keys: Keys, task: 
       const out = await t.run();
       if (out.includes("{")) {
         console.log(`[${task}] ok via ${t.name}`);
+        lastProvider = t.name.replace(/#\d+$/, "");
         return out;
       }
       lastErr = new Error(`${t.name}: 빈 답`);

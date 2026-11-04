@@ -93,6 +93,8 @@ export interface Recognized {
   creator_info: string
   memo: string
   lines: Line[]
+  /** 두 AI 교차 확인 결과(서버가 둘 다 읽었을 때만): 같게 읽은 스텝 수·다르게 읽은 스텝 수. 다른 스텝은 uncertain으로 표시돼 옴 */
+  cross?: { agree: number; differ: number; other_lines?: number }
 }
 
 export const emptyStep = (): Step => ({ name: '', beats: '' })
