@@ -128,28 +128,71 @@ a { color: var(--accent); }
 .login p { margin: 0; color: var(--muted); }
 .kakao { background: #fee500; border-color: #fee500; color: #191919; }
 
-.form { display: flex; flex-direction: column; gap: 10px; }
-.form-head { display: grid; grid-template-columns: 84px 1fr; border: 2px solid var(--fg); }
-.form-head .k { padding: 8px 10px; border-right: 1px solid var(--fg); font-size: 16px; font-weight: 700; color: #1d4ed8; background: var(--soft); }
-.form-head .v { padding: 8px 10px; font-size: 17px; font-weight: 700; color: #1d4ed8; overflow-wrap: anywhere; }
-.form-head .k:nth-child(1), .form-head .v:nth-child(2) { border-bottom: 1px solid var(--fg); }
-.form-body { border: 2px solid var(--fg); padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; font-size: 17px; line-height: 1.5; }
-.form-body .line { display: flex; flex-wrap: wrap; gap: 4px 16px; }
-.form-body .beats { color: var(--muted); }
-.form-body .memo-line { color: var(--warn-fg); margin-top: 4px; }
-.form-stats { text-align: center; font-size: 13px; color: var(--faint); }
-.form.big .form-body { font-size: 24px; gap: 14px; }
-.form.big .form-head .k, .form.big .form-head .v { font-size: 20px; }
-.form.big .form-head { grid-template-columns: 100px 1fr; }
+/* ── 스텝지 양식 (협회 양식: 머리말 표 + 번호 줄) ── */
+.form { display: flex; flex-direction: column; gap: 12px; --ink: #111827; --rule: #cbd5e1; }
+.form-head { display: grid; grid-template-columns: 76px 1fr; border: 1.5px solid var(--ink); border-radius: 6px; overflow: hidden; }
+.form-head .k { padding: 9px 10px; border-right: 1px solid var(--rule); font-size: 13px; font-weight: 700; letter-spacing: 0.04em; color: var(--muted); background: var(--panel); display: flex; align-items: center; }
+.form-head .v { padding: 8px 12px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; overflow-wrap: anywhere; min-height: 44px; }
+.form-head .v b { font-size: 18px; font-weight: 700; color: var(--ink); }
+.form-head .v .sub { font-size: 14px; color: var(--muted); }
+.form-head .k:nth-child(1), .form-head .v:nth-child(2) { border-bottom: 1px solid var(--rule); }
+.form-body { list-style: none; margin: 0; padding: 0; border: 1.5px solid var(--ink); border-radius: 6px; overflow: hidden; }
+.form-body .line { display: grid; grid-template-columns: 30px 1fr; align-items: stretch; border-top: 1px solid var(--rule); min-height: 44px; }
+.form-body .line:first-child { border-top: 0; }
+.form-body .line.two { grid-template-columns: 30px 1fr 1fr; }
+.form-body .no { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; color: var(--faint); background: var(--panel); border-right: 1px solid var(--rule); font-variant-numeric: tabular-nums; }
+.form-body .st { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px 8px 12px; min-width: 0; }
+.form-body .line.two .st + .st { border-left: 1px dashed var(--rule); }
+.form-body .name { font-size: 17px; font-weight: 500; color: var(--ink); line-height: 1.35; overflow-wrap: anywhere; }
+.form-body .beats { flex-shrink: 0; font-size: 13px; font-weight: 500; color: var(--accent-dark); background: var(--accent-soft); border-radius: 999px; padding: 2px 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.form-body .line.end { background: var(--panel); }
+.form-body .line.end .name { font-weight: 700; color: var(--muted); letter-spacing: 0.06em; }
+.form-memo { display: flex; gap: 10px; align-items: baseline; padding: 2px 4px; font-size: 15px; color: var(--muted); white-space: pre-wrap; }
+.form-memo .k { flex-shrink: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; color: var(--faint); border: 1px solid var(--rule); border-radius: 4px; padding: 1px 6px; }
+.form-stats { display: flex; justify-content: center; gap: 14px; font-size: 13px; color: var(--faint); }
+.form-stats span + span::before { content: '·'; margin-right: 14px; }
+.form.big .form-head { grid-template-columns: 96px 1fr; }
+.form.big .form-head .k { font-size: 16px; }
+.form.big .form-head .v b { font-size: 24px; }
+.form.big .form-head .v .sub { font-size: 17px; }
+.form.big .form-body .line { grid-template-columns: 38px 1fr; min-height: 56px; }
+.form.big .form-body .line.two { grid-template-columns: 38px 1fr 1fr; }
+.form.big .form-body .no { font-size: 15px; }
+.form.big .form-body .name { font-size: 24px; }
+.form.big .form-body .beats { font-size: 16px; padding: 3px 10px; }
+
 .editline { display: grid; grid-template-columns: 26px minmax(0, 1fr) 54px minmax(0, 1fr) 54px 32px; gap: 4px; align-items: center; padding: 5px 8px; border-top: 1px solid var(--soft); }
 .editline input { min-height: 40px; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; width: 100%; min-width: 0; }
 .editline input.uncertain-input { background: var(--warn-bg); border-color: var(--warn-line); }
 .editline .no { color: var(--faint); font-size: 13px; text-align: center; }
 .editline .x { width: 32px; height: 36px; border: 0; background: transparent; color: var(--faint); cursor: pointer; font-size: 20px; }
 .edithead { display: grid; grid-template-columns: 26px minmax(0, 1fr) 54px minmax(0, 1fr) 54px 32px; gap: 4px; padding: 6px 8px; background: var(--soft); font-size: 12px; font-weight: 700; color: var(--muted); }
-.form-head input { border: 0; padding: 8px 10px; font-size: 16px; font-weight: 700; color: #1d4ed8; background: var(--bg); width: 100%; min-width: 0; outline: none; }
+.form-head input { border: 0; padding: 8px 10px; font-size: 16px; font-weight: 700; color: var(--fg); background: var(--bg); width: 100%; min-width: 0; outline: none; }
 .form-head input.uncertain-input { background: var(--warn-bg); }
 .form-head .v2 { display: grid; grid-template-columns: 1fr 1fr; }
 .form-head .v2 input:first-child { border-right: 1px solid var(--line); }
 .form-head .v.pad { padding: 0; display: flex; align-items: stretch; }
 .form-head .v.pad.v2 { display: grid; }
+
+/* ── 인쇄: 스텝지 양식만 A4 한 장에 ── */
+@page { size: A4; margin: 14mm 16mm; }
+@media print {
+  html, body { background: #fff; font-size: 12pt; }
+  .app { max-width: none; }
+  .topbar, .player, .btn, .fab, .notice, .photo-view, .list, .no-print { display: none !important; }
+  .content { padding: 0; gap: 8mm; }
+  .form { gap: 5mm; --rule: #9ca3af; }
+  .form-head, .form-body { border-radius: 0; border-width: 1.2pt; break-inside: avoid; }
+  .form-head .k { background: #f3f4f6 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .form-body .no, .form-body .line.end { background: #f3f4f6 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .form-body .line { min-height: 12mm; break-inside: avoid; }
+  .form-body .name { font-size: 14pt; }
+  .form-body .beats { background: none; color: #374151; padding: 0; font-size: 12pt; }
+  .form-body .beats::before { content: '('; }
+  .form-body .beats::after { content: ')'; }
+  .uncertain { background: none; outline: none; padding: 0; }
+  .form-stats { color: #6b7280; }
+  .print-title { display: block !important; }
+}
+.print-title { display: none; text-align: center; font-size: 15pt; font-weight: 700; letter-spacing: 0.1em; margin: 0 0 2mm; }
+@media print { .form-head .v b { font-size: 16pt; } .form-head .v .sub { font-size: 12pt; } .form-head .k { font-size: 11pt; } }

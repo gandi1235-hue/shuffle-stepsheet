@@ -16,3 +16,4 @@ export const Chevron = ({ open }: { open?: boolean }) => <svg {...base} style={{
 export const Camera = () => <svg {...base}><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
 export const User = () => <svg {...base}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" /></svg>
 export const People = () => <svg {...base}><circle cx="9" cy="8" r="3.5" /><circle cx="17" cy="9" r="2.5" /><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5" /><path d="M16 14.5c3 0 6 1.5 6 4.5" /></svg>
+export const Print = () => <svg {...base}><path d="M7 9V3h10v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M7 14h10v7H7z" /></svg>

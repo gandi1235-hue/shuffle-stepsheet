@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import Player from '../components/Player'
 import SheetTable from '../components/SheetTable'
 import TopBar from '../components/TopBar'
-import { Close, Edit, Photo, Share } from '../components/Icons'
+import { Close, Edit, Photo, Print, Share } from '../components/Icons'
 import { deleteSheet, getFolder, getSheet, signedUrl } from '../lib/api'
 import type { Folder, Stepsheet } from '../lib/types'
 
@@ -93,6 +93,9 @@ export default function SheetPage() {
                 <Edit />
               </button>
             )}
+            <button type="button" className="iconbtn" aria-label="인쇄" onClick={() => window.print()}>
+              <Print />
+            </button>
             <button type="button" className="iconbtn" aria-label="공유" onClick={share}>
               <Share />
             </button>
@@ -108,6 +111,7 @@ export default function SheetPage() {
           </div>
         )}
 
+        <h2 className="print-title">셔플댄스 스텝지</h2>
         <SheetTable title={sheet.song?.title ?? ''} artist={sheet.song?.artist ?? ''} creator={sheet.creator_name} creatorInfo={sheet.creator_info} lines={sheet.lines} memo={sheet.memo} />
 
         {isExternal && (
