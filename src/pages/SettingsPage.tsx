@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import Avatar from '../components/Avatar'
+import { Character } from '../components/Avatar'
+import { LevelUpOverlay } from '../components/LevelUp'
+import { levelLabel, levelOf, titleOf } from '../lib/level'
 import TopBar from '../components/TopBar'
-import { getProfile, makeAvatar, squareThumb, updateProfile, uploadAvatar, type Profile } from '../lib/api'
+import { getProfile, mySheetCount, shrinkImage, updateProfile, uploadAvatar, type Profile } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { usePrefs, type FontSize } from '../lib/prefs'
 import { supabase } from '../lib/supabase'
@@ -26,13 +28,15 @@ export default function SettingsPage() {
 
   // ── 내 프로필: 닉네임·아바타 ──
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [sheets, setSheets] = useState<number | null>(null)
+  const [demo, setDemo] = useState(false)
+  const level = levelOf(sheets ?? 0)
   const [nick, setNick] = useState('')
   const [saving, setSaving] = useState(false)
-  const [making, setMaking] = useState<'' | 'ai' | 'photo'>('')
+  const [making, setMaking] = useState(false)
   const [preview, setPreview] = useState<{ blob: Blob; url: string } | null>(null)
   const [perr, setPerr] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
-  const modeRef = useRef<'ai' | 'photo'>('ai')
   useEffect(() => {
     getProfile()
       .then((p) => {
@@ -40,6 +44,7 @@ export default function SettingsPage() {
         setNick(p?.nickname ?? '')
       })
       .catch((e) => setPerr(e.message))
+    mySheetCount().then(setSheets).catch(() => undefined)
   }, [])
 
   const saveNick = async (e: React.FormEvent) => {
@@ -58,23 +63,20 @@ export default function SettingsPage() {
     }
   }
 
-  const pick = (mode: 'ai' | 'photo') => {
-    modeRef.current = mode
-    fileRef.current?.click()
-  }
+  const pick = () => fileRef.current?.click()
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     e.target.value = ''
     if (!f) return
     setPerr('')
-    setMaking(modeRef.current)
+    setMaking(true)
     try {
-      const blob = modeRef.current === 'ai' ? await makeAvatar(f) : await squareThumb(f)
+      const blob = await shrinkImage(f)
       setPreview({ blob, url: URL.createObjectURL(blob) })
     } catch (er) {
       setPerr((er as Error).message)
     } finally {
-      setMaking('')
+      setMaking(false)
     }
   }
   const useAvatar = async () => {
@@ -109,10 +111,19 @@ export default function SettingsPage() {
         <section className="panel">
           <div className="panel-title">내 프로필</div>
           <div className="profile-row">
-            {preview ? <img className="avatar" src={preview.url} alt="새 아바타 미리보기" style={{ width: 72, height: 72 }} /> : <Avatar path={profile?.avatar_path} name={profile?.nickname || profile?.display_name || '나'} userId={profile?.id} size={72} />}
+            {preview ? <img className="character" src={preview.url} alt="새 아바타 미리보기" style={{ width: 96, height: 128 }} /> : <Character path={profile?.avatar_path} name={profile?.nickname || profile?.display_name || '나'} userId={profile?.id} width={96} />}
             <div className="grow">
-              <div className="who-name" style={{ fontSize: 17 }}>{profile?.nickname?.trim() || profile?.display_name || '…'}</div>
+              <div className="who-name" style={{ fontSize: 17 }}>
+                {profile?.nickname?.trim() || profile?.display_name || '…'} <span className="chip lv">{levelLabel(level)}</span>
+              </div>
               <div className="panel-desc">본명 {profile?.display_name || '(없음)'} · 멤버들이 이름을 누르면 본명이 보여요</div>
+              <div className="lv-line">
+                <span className="lv-bar"><i /></span>
+                <span className="panel-desc" style={{ margin: 0 }}>{sheets === null ? '…' : `스텝지 ${sheets}장 · 1장 더 만들면 Lv.${level + 1}${titleOf(level + 1) && titleOf(level + 1) !== titleOf(level) ? ` ${titleOf(level + 1)}` : ''}`}</span>
+              </div>
+              <button type="button" className="btn" style={{ alignSelf: 'flex-start', minHeight: 34, fontSize: 13, marginTop: 6 }} onClick={() => setDemo(true)}>
+                ✨ 레벨업 연출 보기
+              </button>
             </div>
           </div>
           {preview ? (
@@ -126,14 +137,11 @@ export default function SettingsPage() {
             </div>
           ) : (
             <div className="row-btns" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button type="button" className="btn primary" style={{ flex: 2, minWidth: 160 }} onClick={() => pick('ai')} disabled={!!making}>
-                {making === 'ai' ? '만드는 중… (10초쯤)' : '✨ 사진으로 AI 아바타 만들기'}
-              </button>
-              <button type="button" className="btn" style={{ flex: 1 }} onClick={() => pick('photo')} disabled={!!making}>
-                {making === 'photo' ? '…' : '사진 그대로'}
+              <button type="button" className="btn primary" style={{ flex: 2, minWidth: 160 }} onClick={pick} disabled={making}>
+                {making ? '…' : '캐릭터 사진 올리기'}
               </button>
               {profile?.avatar_path && (
-                <button type="button" className="btn" style={{ flex: 1 }} onClick={clearAvatar} disabled={!!making}>
+                <button type="button" className="btn" style={{ flex: 1 }} onClick={clearAvatar} disabled={making}>
                   지우기
                 </button>
               )}
@@ -147,8 +155,9 @@ export default function SettingsPage() {
             </button>
           </form>
           {perr && <div className="error">{perr}</div>}
-          <div className="panel-desc">AI 아바타는 얼굴이 잘 보이는 사진 한 장이면 돼요. 마음에 안 들면 "다시"를 눌러 다른 사진으로 또 만들 수 있어요.</div>
+          <div className="panel-desc">캐릭터 그림이나 사진을 올리면 멤버들에게 그걸로 보여요(세로 전신 그림이 잘 어울려요). 스텝지를 한 장 만들 때마다 레벨이 오르고, Lv.5부터 2급강사, Lv.10부터 1급강사 칭호가 붙어요.</div>
         </section>
+        {demo && <LevelUpOverlay info={{ from: level, to: level + 1, profile }} onClose={() => setDemo(false)} />}
 
         <section className="panel">
           <div className="panel-title">글자 크기</div>

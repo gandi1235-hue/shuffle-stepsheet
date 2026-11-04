@@ -72,13 +72,13 @@ Deno.serve(async (req) => {
     if (body.avatar?.data) {
       if (!geminiKey) throw new Error("AI 아바타는 Gemini 키가 있어야 만들 수 있어요");
       const model = Deno.env.get("GEMINI_IMAGE_MODEL") ?? "gemini-2.5-flash-image";
-      const prompt = "Turn the person in this photo into a cute, friendly 3D-cartoon style avatar (soft Pixar-like sticker look). Head and shoulders, centered, facing the camera, smiling. Keep their recognizable features: hair style and color, glasses, face shape, skin tone, age. Plain soft pastel background, square 1:1, no text, no watermark.";
+      const prompt = "Turn the person in this photo into a cute chibi-style full-body 3D-cartoon dance character (soft Pixar-like sticker look). Big head and small body (about 2.5 heads tall), head near the top of the frame, whole body visible down to the shoes, standing in a playful shuffle-dance pose on a simple floor, facing the camera, smiling. Keep their recognizable features: hair style and color, glasses, face shape, skin tone, age, and the outfit colors from the photo. Plain soft pastel background, portrait 3:4, no text, no watermark.";
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
         body: JSON.stringify({
           contents: [{ role: "user", parts: [{ inline_data: { mime_type: body.avatar.media_type, data: body.avatar.data } }, { text: prompt }] }],
-          generationConfig: { responseModalities: ["IMAGE", "TEXT"], imageConfig: { aspectRatio: "1:1" } },
+          generationConfig: { responseModalities: ["IMAGE", "TEXT"], imageConfig: { aspectRatio: "3:4" } },
         }),
       });
       const j = await res.json();
@@ -90,17 +90,33 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ image: img.data, media_type: (img as { mimeType?: string }).mimeType ?? (img as { mime_type?: string }).mime_type ?? "image/png" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // 순서 계획 모드: { order_request, lines } — 비정형 요청을 춤추는 순서(줄 번호 목록)로
+    // 직접 요청 모드: { order_request, lines } — 비정형 요청을 춤추는 계획(줄 순서·쉼·길이·시작 시각·박자)으로
     if (body.order_request && body.lines?.length) {
-      const sys = `당신은 셔플댄스 스텝지와 실제 영상/노래의 순서를 맞춰 주는 도우미입니다. 스텝 줄 목록(번호는 1부터)과 사용자의 요청을 읽고, 영상/노래에서 춤추는 순서대로 줄 번호를 나열합니다.
-규칙: 반복이면 같은 번호를 여러 번 적습니다. 요청에 언급되지 않은 줄은 원래 순서를 유지합니다. "안 춤", "빼고"는 그 줄을 뺍니다. "N번부터 시작"은 N번 앞 줄들을 빼되, 사용자가 "맨 끝에"처럼 위치를 말하면 거기에 넣습니다. 구간 이름(후렴, 인트로 등)은 [구간] 표시로 찾습니다.
-시작 시각을 말하면(예: "12초부터", "0:35에 첫 줄") start_at에 초 단위 숫자로, 박자를 말하면(예: "박자 120", "BPM 132") bpm에 숫자로 적습니다. 없으면 null.
-반드시 JSON {"order": [번호, ...], "start_at": 초 또는 null, "bpm": 숫자 또는 null, "note": "바뀐 점 한 줄(한국어, 20자 내)"} 만 출력합니다.`;
+      const sys = `당신은 셔플댄스 스텝지와 실제 영상/노래의 타이밍을 맞춰 주는 도우미입니다. 스텝 줄 목록(번호는 1부터, 괄호 안은 그 줄의 박수)과 사용자의 요청(말로 한 것을 받아 적은 글이라 띄어쓰기·조사가 어색할 수 있음)을 읽고, 영상/노래에서 실제로 춤추는 차례를 plan 배열로 적습니다.
+
+plan 항목 종류:
+- {"line": N} : N번 줄을 춤 (한 줄 = 그 줄의 박수만큼 시간이 흐름)
+- {"line": N, "beats": B} : N번 줄을 평소와 다른 박수 B만큼 (예: "3번은 16박으로 길게", "2번은 반만")
+- {"line": N, "at": 초} : 요청에 그 줄의 시작 시각이 있을 때 (예: "2번은 35초에", "후렴은 1분 10초부터")
+- {"rest": 박수} : 그만큼 쉼. 동작 없음, 전환, 기다림, 전주 (예: "1번 하고 4박 더 쉬고 2번" → line 1, rest 4, line 2 / "2번 전에 8박 기다렸다가" → rest 8, line 2 / "한 마디 쉬고" → rest 4, "두 마디" → rest 8)
+
+규칙:
+- 반복이면 같은 line을 여러 번 적습니다("후렴 두 번", "1번 한 번 더").
+- 요청에 언급되지 않은 줄은 원래 순서와 길이를 그대로 둡니다. 전체 계획을 처음부터 끝까지 빠짐없이 적습니다.
+- "안 춤", "빼고", "생략"은 그 줄을 뺍니다. "N번부터 시작"은 N번 앞 줄들을 빼되, "맨 끝에"처럼 위치를 말하면 거기에 넣습니다.
+- 구간 이름(후렴, 인트로, A파트 등)은 줄 앞의 [구간] 표시로 찾습니다. 구간을 말하면 그 구간의 줄 전부를 뜻합니다.
+- 전체 시작 시각을 말하면(예: "12초부터", "0:35에 첫 줄") start_at에 초 단위 숫자로, 박자를 말하면(예: "박자 120", "BPM 132", "좀 더 빠르게 130") bpm에 숫자로 적습니다. 없으면 null.
+- 요청이 스텝지에 없는 줄·구간을 가리키거나 뜻을 알 수 없으면 plan을 빈 배열로 두고 unclear에 짧게 되묻는 말(한국어)을 적습니다. 그 밖에는 unclear를 빈 문자열로.
+
+반드시 JSON {"plan": [...], "start_at": 초 또는 null, "bpm": 숫자 또는 null, "note": "바뀐 점 한 줄(한국어, 20자 내)", "unclear": ""} 만 출력합니다.`;
       const ask = `[스텝 줄 목록]\n${body.lines.map((l) => String(l)).join("\n")}\n\n[요청]\n${String(body.order_request).trim()}`;
       const t = geminiKey ? await viaGemini([], geminiKey, ask, sys) : claudeKey ? await viaClaude([], claudeKey, ask, sys) : "";
       const s0 = t.indexOf("{"); const e0 = t.lastIndexOf("}");
       const j = s0 >= 0 ? JSON.parse(t.slice(s0, e0 + 1)) : {};
-      return new Response(JSON.stringify({ order: j.order ?? [], start_at: j.start_at ?? null, bpm: j.bpm ?? null, note: j.note ?? "" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const plan = Array.isArray(j.plan) ? j.plan : [];
+      // 옛 앱 호환: order(줄 번호 목록)도 같이
+      const order = plan.filter((p: { line?: number }) => typeof p?.line === "number").map((p: { line: number }) => p.line);
+      return new Response(JSON.stringify({ plan, order, start_at: j.start_at ?? null, bpm: j.bpm ?? null, note: j.note ?? "", unclear: j.unclear ?? "" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // 가수 추정 모드: { title } 만 오면 노래 제목으로 가수를 알려 줌

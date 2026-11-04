@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import Avatar from '../components/Avatar'
+import Avatar, { Character } from '../components/Avatar'
 import { Sheet as Modal } from '../components/ui'
 import { FOLDER_INVITE_TEXT } from '../lib/share'
 import TopBar from '../components/TopBar'
 import { useToast } from '../components/ui'
-import { getFolder, listMembers, removeMember, setMemberRole, transferOwner, type Member } from '../lib/api'
+import { getFolder, listMembers, removeMember, setMemberRole, sheetCounts, transferOwner, type Member } from '../lib/api'
+import { levelLabel, levelOf } from '../lib/level'
 import { useAuth } from '../lib/auth'
 import type { Folder, Role } from '../lib/types'
 
@@ -16,12 +17,15 @@ export default function MembersPage() {
   const [members, setMembers] = useState<Member[]>([])
   const [err, setErr] = useState('')
   const [detail, setDetail] = useState<Member | null>(null)
+  const [counts, setCounts] = useState<Map<string, number>>(new Map())
+  const lv = (uid: string) => levelOf(counts.get(uid) ?? 0)
   const toast = useToast()
 
   const load = () => listMembers(id).then(setMembers).catch((e) => setErr(e.message))
   useEffect(() => {
     getFolder(id).then(setFolder)
     load()
+    sheetCounts().then(setCounts).catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
@@ -85,7 +89,7 @@ export default function MembersPage() {
           {members.map((m) => (
             <div className="member" key={m.user_id}>
               <button type="button" className="nm who" onClick={() => setDetail(m)} title="자세히">
-                <Avatar path={m.avatar_path} name={m.name} userId={m.user_id} size={40} />
+                <Avatar path={m.avatar_path} name={m.name} userId={m.user_id} size={40} level={lv(m.user_id)} />
                 <span>
                   {m.name}
                   {m.user_id === session?.user.id && <span style={{ color: 'var(--faint)', fontSize: 14 }}> (나)</span>}
@@ -112,15 +116,16 @@ export default function MembersPage() {
         </div>
 
         <div className="panel-desc" style={{ marginTop: 18 }}>
-          이름을 누르면 본명이 보여요. 내 닉네임·아바타는 <Link to="/settings">설정</Link>에서 바꿔요. 폴더 이름 바꾸기·없애기·나가기는 <Link to={`/folder/${id}/edit`}>폴더 편집</Link>에서 해요.
+          이름을 누르면 본명과 레벨이 보여요. 레벨은 만든 스텝지 수로 올라요(1장 = Lv.2, Lv.5 2급강사, Lv.10 1급강사). 내 닉네임·아바타는 <Link to="/settings">설정</Link>에서 바꿔요. 폴더 이름 바꾸기·없애기·나가기는 <Link to={`/folder/${id}/edit`}>폴더 편집</Link>에서 해요.
         </div>
       </div>
 
       <Modal open={!!detail} title="멤버 정보" onClose={() => setDetail(null)}>
         {detail && (
           <div className="who-card">
-            <Avatar path={detail.avatar_path} name={detail.name} userId={detail.user_id} size={96} />
+            <Character path={detail.avatar_path} name={detail.name} userId={detail.user_id} width={108} />
             <div className="who-name">{detail.name}</div>
+            <span className="chip lv">{levelLabel(lv(detail.user_id))} · 스텝지 {counts.get(detail.user_id) ?? 0}장</span>
             <div className="who-real">본명 {detail.display_name || '(없음)'}{detail.nickname.trim() ? '' : ' · 닉네임 없음'}</div>
             <span className="chip accent">{detail.role === 'owner' ? '주인' : detail.role === 'editor' ? '편집자' : '보기만'}</span>
           </div>

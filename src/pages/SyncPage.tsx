@@ -5,11 +5,11 @@ import YouTubePlayer, { youtubeId } from '../components/YouTubePlayer'
 import SheetTable from '../components/SheetTable'
 import TopBar from '../components/TopBar'
 import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
-import { getFolder, getSheet, planOrder, signedUrl, updateSync } from '../lib/api'
+import { getFolder, getSheet, planRequest, signedUrl, updateSync } from '../lib/api'
 import { haptic } from '../lib/prefs'
 import { detectTempo, snapToBeat, type Tempo } from '../lib/tempo'
 import { activeLine, eventsOf, marksFromEvents, withSync, type Folder, type Stepsheet, type SyncEvent, type SyncSource } from '../lib/types'
-import { DEFAULT_BPM, bpmFromEvents, fillEvents, orderOf, orderPromptLines, stepIdxOf } from '../lib/sync'
+import { DEFAULT_BPM, bpmFromEvents, fillEvents, linesToPlan, orderPromptLines, planLines, planOf, planText, stepIdxOf, type PlanItem } from '../lib/sync'
 
 const fmtT = (x: number) => `${Math.floor(x / 60)}:${Math.floor(x % 60).toString().padStart(2, '0')}`
 const r1 = (x: number) => Math.round(x * 10) / 10
@@ -31,7 +31,7 @@ export default function SyncPage() {
   const player = useRef<PlayerHandle | null>(null)
   const [t, setT] = useState(0)
   const [events, setEvents] = useState<SyncEvent[]>([])
-  const [order, setOrder] = useState<number[]>([]) // 춤추는 순서 (lines 인덱스)
+  const [plan, setPlan] = useState<PlanItem[]>([]) // 춤추는 계획: 줄(lines 인덱스)·쉼
   const [orderNote, setOrderNote] = useState('')
   const [history, setHistory] = useState<SyncEvent[][]>([])
   const [bpm, setBpm] = useState(DEFAULT_BPM)
@@ -122,22 +122,23 @@ export default function SyncPage() {
     setHistory([])
     setOrderNote('')
     if (saved.length) {
+      const rate = bpmFromEvents(s, saved)
       setEvents(saved)
-      setOrder(orderOf(saved))
-      setBpm(bpmFromEvents(s, saved))
+      setPlan(planOf(s, saved, rate))
+      setBpm(rate)
       setPhase('fix')
       touched.current = true
     } else if (src === 'yt') {
       // 유튜브 기본값: 영상 시작과 동시에 1번 줄. 박자는 음원용 동기화가 있으면 거기서, 없으면 기본값
       const rate = tp?.bpm ?? bpmFromEvents(s, eventsOf(s.sync, 'file'))
       setBpm(rate)
-      setOrder(idx)
-      setEvents(fillEvents(s, idx, 0, rate))
+      setPlan(linesToPlan(idx))
+      setEvents(fillEvents(s, linesToPlan(idx), 0, rate))
       setPhase('fix')
       touched.current = false
     } else {
       setEvents([])
-      setOrder(idx)
+      setPlan(linesToPlan(idx))
       setPhase('first')
       touched.current = false
     }
@@ -168,7 +169,7 @@ export default function SyncPage() {
   // 분석이 끝났을 때 이미 채워 뒀고 아직 손으로 고친 게 없으면 새 박자로 다시 채움
   useEffect(() => {
     if (!sheet || !tempo || touched.current || phase !== 'fix' || !events.length) return
-    setEvents(fillEvents(sheet, order, events[0].t, tempo.bpm))
+    setEvents(fillEvents(sheet, plan, events[0].t, tempo.bpm))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tempo])
 
@@ -190,8 +191,9 @@ export default function SyncPage() {
   const stepIdx = stepIdxOf(sheet)
   const activeIndex = activeLine(events, t)
   const marks = marksFromEvents(events, sheet.lines.length)
-  const orderText = order.map((l) => stepIdx.indexOf(l) + 1).join(' → ')
-  const orderChanged = order.length !== stepIdx.length || order.some((l, k) => l !== stepIdx[k])
+  const orderText = planText(sheet, plan)
+  const order = planLines(plan)
+  const orderChanged = plan.length !== stepIdx.length || order.some((l, k) => l !== stepIdx[k]) || plan.some((p) => 'rest' in p || p.beats || p.at !== undefined)
 
   const now = () => player.current?.time() ?? 0
   const push = (ev: SyncEvent[]) => {
@@ -203,14 +205,14 @@ export default function SyncPage() {
   const markFirst = () => {
     if (!order.length) return toast('스텝 줄이 없어요')
     const t0 = r1(snapToBeat(now(), beatsOk ? tempo : null))
-    setEvents(fillEvents(sheet, order, t0, bpm))
+    setEvents(fillEvents(sheet, plan, t0, bpm))
     setPhase('fix')
     haptic(15)
   }
   const changeBpm = (v: number) => {
     const rate = Math.max(60, Math.min(200, Math.round(v * 10) / 10))
     setBpm(rate)
-    if (events.length) push(fillEvents(sheet, order, events[0].t, rate))
+    if (events.length) push(fillEvents(sheet, plan, events[0].t, rate))
     touched.current = true
   }
   /** 교정: 줄을 누른 그 순간이 그 줄의 시작이 됨 (그 줄만 바뀜). 같은 줄이 여러 번이면 지금과 가장 가까운 것 */
@@ -242,20 +244,23 @@ export default function SyncPage() {
     if (tempo) setBpm(tempo.bpm)
     player.current?.seek(0, true)
   }
-  /** 비정형 요청 → AI가 춤추는 순서로 바꿔 줌 → 그 순서로 다시 채움 */
+  /** 직접 요청 → AI가 춤추는 계획(줄 순서·쉼·길이·시작 시각·박자)으로 바꿔 줌 → 그대로 다시 채움 */
   const applyRequest = async () => {
     const q = request.trim()
     if (!q) return
     setAsking(true)
     try {
-      const { order: nums, note, startAt, bpm: askedBpm } = await planOrder(orderPromptLines(sheet), q)
-      const next = nums.map((n) => stepIdx[n - 1]).filter((l) => l !== undefined)
-      if (!next.length) throw new Error('요청을 이해하지 못했어요')
-      setOrder(next)
-      setOrderNote(note)
-      const rate = askedBpm && askedBpm >= 60 && askedBpm <= 200 ? askedBpm : bpm
-      if (askedBpm) setBpm(rate)
-      const t0 = startAt !== null && startAt >= 0 ? startAt : events[0]?.t
+      const r = await planRequest(orderPromptLines(sheet), q)
+      if (r.unclear && !r.plan.length) throw new Error(r.unclear)
+      const next: PlanItem[] = r.plan
+        .map((p): PlanItem | null => ('rest' in p ? p : stepIdx[p.line - 1] === undefined ? null : { ...p, line: stepIdx[p.line - 1] }))
+        .filter((p): p is PlanItem => p !== null)
+      if (!planLines(next).length) throw new Error(r.unclear || '요청을 이해하지 못했어요')
+      setPlan(next)
+      setOrderNote(r.note)
+      const rate = r.bpm && r.bpm >= 60 && r.bpm <= 200 ? r.bpm : bpm
+      if (r.bpm) setBpm(rate)
+      const t0 = r.startAt !== null && r.startAt >= 0 ? r.startAt : events[0]?.t
       if (typeof t0 === 'number') {
         push(fillEvents(sheet, next, t0, rate))
         setPhase('fix')
@@ -263,7 +268,7 @@ export default function SyncPage() {
       }
       setAskOpen(false)
       haptic(15)
-      toast(`순서를 바꿨어요: ${next.map((l) => stepIdx.indexOf(l) + 1).join(' → ')}`)
+      toast(r.note ? `${r.note} · ${planText(sheet, next)}` : `바꿨어요: ${planText(sheet, next)}`)
     } catch (e) {
       toast((e as Error).message)
     } finally {
@@ -271,9 +276,9 @@ export default function SyncPage() {
     }
   }
   const resetOrder = () => {
-    setOrder(stepIdx)
+    setPlan(linesToPlan(stepIdx))
     setOrderNote('')
-    if (events.length) push(fillEvents(sheet, stepIdx, events[0].t, bpm))
+    if (events.length) push(fillEvents(sheet, linesToPlan(stepIdx), events[0].t, bpm))
     setAskOpen(false)
   }
   const save = async () => {
@@ -315,7 +320,7 @@ export default function SyncPage() {
       </div>
 
       <Modal open={askOpen} title="직접 요청" onClose={() => { stopListen(); setAskOpen(false) }}>
-        <div className="panel-desc">말로 하거나 글로 적어 주세요. 예: "2번 줄부터 시작하고 1번은 맨 끝에" / "후렴을 두 번" / "35초부터 시작" / "박자 128"</div>
+        <div className="panel-desc">말로 하거나 글로 적어 주세요. 순서, 반복, 쉬는 박, 줄 길이, 시작 시각, 박자 다 돼요. 예: "1번 하고 4박 더 쉬고 2번" / "후렴을 두 번" / "3번은 16박으로 길게" / "2번은 35초에" / "박자 128"</div>
         <textarea className="ask" rows={3} value={listening && interim ? `${request}${request ? ' ' : ''}${interim}` : request} onChange={(e) => setRequest(e.target.value)} placeholder="예: 2번 줄부터 시작, 1번은 맨 끝에" />
         {speechOk && (
           <button type="button" className={listening ? 'btn mic on' : 'btn mic'} onClick={listening ? stopListen : startListen} disabled={asking}>

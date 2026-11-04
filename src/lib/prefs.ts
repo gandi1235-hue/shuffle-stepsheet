@@ -50,7 +50,7 @@ export function usePrefs(): [Prefs, (patch: Partial<Prefs>) => void] {
 }
 
 /** 짧은 진동 피드백 (지원 기기에서만) */
-export function haptic(ms = 12) {
+export function haptic(ms: number | number[] = 12) {
   try {
     navigator.vibrate?.(ms)
   } catch {

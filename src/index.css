@@ -531,6 +531,38 @@ textarea.ask { width: 100%; box-sizing: border-box; border: 1.5px solid var(--li
 /* ── 아바타 · 멤버 정보 · 폴더 톡 ── */
 .avatar { border-radius: 50%; object-fit: cover; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; background: var(--soft); }
 .avatar.initial { letter-spacing: 0; }
+img.avatar { object-position: center top; } /* 전신 캐릭터면 머리 쪽이 보이게 */
+.avatar-wrap { position: relative; display: inline-block; flex-shrink: 0; }
+.lv-badge { position: absolute; right: -6px; bottom: -4px; background: var(--grad-dark); color: #fff; font-weight: 800; line-height: 1; padding: 3px 5px; border-radius: 999px; border: 2px solid var(--surface); letter-spacing: 0; white-space: nowrap; }
+.chip.lv { background: var(--grad); color: #fff; font-weight: 800; padding: 3px 9px; font-size: 12.5px; }
+.character { border-radius: 16px; object-fit: contain; object-position: center; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; background: var(--soft); box-shadow: var(--shadow); }
+.character.initial { letter-spacing: 0; }
+.lv-line { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.lv-bar { flex: 1; height: 8px; border-radius: 999px; background: var(--soft); overflow: hidden; max-width: 160px; }
+.lv-bar > i { display: block; height: 100%; width: 100%; background: var(--grad); border-radius: 999px; }
+
+/* ── 레벨업 연출 ── */
+.levelup { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(43, 26, 34, 0.55); backdrop-filter: blur(3px); animation: fade-in 0.25s ease-out; padding: 24px; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.levelup-card { background: var(--surface); border-radius: 24px; padding: 22px 24px 20px; width: min(100%, 320px); text-align: center; box-shadow: var(--shadow-float); animation: card-pop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1); }
+@keyframes card-pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.levelup-title { font-size: 26px; font-weight: 900; letter-spacing: 2px; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; animation: title-blink 0.9s ease-in-out infinite alternate; }
+@keyframes title-blink { from { filter: brightness(1); transform: scale(1); } to { filter: brightness(1.25); transform: scale(1.06); } }
+.levelup-stage { position: relative; height: 210px; display: flex; align-items: flex-end; justify-content: center; margin: 6px 0 4px; }
+.levelup-glow { position: absolute; left: 50%; bottom: 10px; width: 200px; height: 200px; margin-left: -100px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 214, 102, 0.85) 0%, rgba(255, 170, 200, 0.55) 40%, rgba(255, 255, 255, 0) 70%); animation: glow 1.1s ease-in-out infinite alternate; }
+@keyframes glow { from { transform: scale(0.85); opacity: 0.7; } to { transform: scale(1.15); opacity: 1; } }
+.character.shine { position: relative; z-index: 1; animation: shine 1.1s ease-in-out infinite alternate; }
+@keyframes shine { from { filter: drop-shadow(0 0 6px rgba(255, 220, 120, 0.6)) brightness(1); transform: scale(1); } to { filter: drop-shadow(0 0 22px rgba(255, 215, 90, 1)) drop-shadow(0 0 40px rgba(255, 150, 190, 0.8)) brightness(1.12); transform: scale(1.04); } }
+.levelup-title-badge { display: inline-block; margin-top: 8px; padding: 5px 12px; border-radius: 999px; background: linear-gradient(135deg, #ffd166, #ff9f43); color: #4a2a00; font-weight: 800; font-size: 14px; }
+.spark { position: absolute; left: 50%; bottom: 70px; width: 10px; height: 10px; margin-left: -5px; background: #ffd166; clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); animation: spark 1.6s ease-out infinite; animation-delay: calc(var(--i) * 0.13s); --a: calc(var(--i) * 30deg); opacity: 0; }
+.spark:nth-child(odd) { background: #ff7ab3; }
+@keyframes spark { 0% { transform: rotate(var(--a)) translateY(0) scale(0.4); opacity: 0; } 20% { opacity: 1; } 100% { transform: rotate(var(--a)) translateY(-120px) scale(1.1); opacity: 0; } }
+.levelup-lv { display: flex; justify-content: center; align-items: baseline; gap: 10px; font-weight: 900; margin-top: 6px; }
+.levelup-lv .old { font-size: 18px; color: var(--faint); text-decoration: line-through; }
+.levelup-lv .arrow { color: var(--faint); }
+.levelup-lv .new { font-size: 34px; color: var(--accent); animation: title-blink 0.9s ease-in-out infinite alternate; }
+.levelup-name { font-size: 14px; color: var(--muted); margin-top: 2px; }
+@media (prefers-reduced-motion: reduce) { .character.shine, .spark, .levelup-glow, .levelup-title, .levelup-lv .new { animation: none; } }
 .member .nm.who { flex: 1 1 100%; min-width: 0; display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; }
 .member .nm.who > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .member > .chip { margin-left: auto; }

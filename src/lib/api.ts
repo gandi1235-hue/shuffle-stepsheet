@@ -262,6 +262,23 @@ export async function listMembers(folderId: string): Promise<Member[]> {
   })
 }
 
+/** 내가 볼 수 있는 스텝지를 만든 사람별로 센 수 (캐릭터 레벨 = 수 + 1). 내 것은 전부, 남의 것은 같이 있는 폴더 안의 것만 */
+export async function sheetCounts(): Promise<Map<string, number>> {
+  const { data, error } = await supabase.from('stepsheets').select('created_by')
+  if (error) throw error
+  const m = new Map<string, number>()
+  for (const r of data ?? []) if (r.created_by) m.set(r.created_by, (m.get(r.created_by) ?? 0) + 1)
+  return m
+}
+/** 내가 만든 스텝지 수 */
+export async function mySheetCount(): Promise<number> {
+  const uid = (await supabase.auth.getUser()).data.user?.id
+  if (!uid) return 0
+  const { count, error } = await supabase.from('stepsheets').select('id', { count: 'exact', head: true }).eq('created_by', uid)
+  if (error) throw error
+  return count ?? 0
+}
+
 /* ── 내 프로필: 닉네임·아바타 ── */
 export interface Profile {
   id: string
@@ -302,28 +319,18 @@ export async function uploadAvatar(blob: Blob): Promise<string> {
 }
 
 /** 사진을 정사각형 작은 그림으로 (그대로 아바타로 쓸 때) */
-export async function squareThumb(file: File, size = 512): Promise<Blob> {
-  const bmp = await createImageBitmap(file)
-  const side = Math.min(bmp.width, bmp.height)
-  const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
-  canvas.getContext('2d')!.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size)
-  return new Promise((res) => canvas.toBlob((b) => res(b ?? file), 'image/jpeg', 0.88))
-}
-
-/** 사진 → AI가 귀여운 캐릭터 아바타로 (서버 함수의 avatar 모드) */
-export async function makeAvatar(file: File): Promise<Blob> {
-  const blob = await shrink(file)
-  const data = await toBase64(blob)
-  const { data: r, error } = await supabase.functions.invoke('recognize', { body: { avatar: { media_type: blob.type || 'image/jpeg', data } } })
-  if (error) throw new Error('아바타를 만들지 못했어요. 잠시 후 다시 해 보세요.')
-  if (r?.error) throw new Error(r.error)
-  if (!r?.image) throw new Error('아바타를 만들지 못했어요')
-  const bin = atob(r.image as string)
-  const bytes = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-  return new Blob([bytes], { type: (r.media_type as string) || 'image/png' })
+/** 그림 파일을 긴 변 max 픽셀로 줄여(비율 유지) JPEG/PNG로. 투명 PNG는 PNG 유지 */
+export async function shrinkImage(file: File, max = 1024): Promise<Blob> {
+  const img = await createImageBitmap(file)
+  const k = Math.min(1, max / Math.max(img.width, img.height))
+  const w = Math.round(img.width * k)
+  const h = Math.round(img.height * k)
+  const c = document.createElement('canvas')
+  c.width = w
+  c.height = h
+  c.getContext('2d')!.drawImage(img, 0, 0, w, h)
+  const png = file.type === 'image/png'
+  return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('그림을 읽지 못했어요'))), png ? 'image/png' : 'image/jpeg', 0.9))
 }
 
 /* ── 폴더 톡 ── */
@@ -463,13 +470,30 @@ export async function moveSheet(id: string, targetFolderId: string): Promise<Ste
   return saved
 }
 
-/** 비정형 요청("2번부터 시작, 1번은 맨 끝에 한 번")을 춤추는 순서(1부터 세는 스텝 줄 번호 목록)로 */
-export async function planOrder(lines: string[], request: string): Promise<{ order: number[]; note: string; startAt: number | null; bpm: number | null }> {
+/**
+ * 직접 요청("1번 하고 4박 더 쉬고 2번", "후렴 두 번", "35초부터", "박자 128")을 춤추는 계획으로.
+ * plan 항목: {line: 1부터 세는 스텝 줄 번호, beats?, at?} | {rest: 박수}. 못 알아들으면 unclear에 되묻는 말.
+ */
+export type PlanReply = { plan: ({ line: number; beats?: number; at?: number } | { rest: number })[]; note: string; startAt: number | null; bpm: number | null; unclear: string }
+export async function planRequest(lines: string[], request: string): Promise<PlanReply> {
   const { data, error } = await supabase.functions.invoke('recognize', { body: { order_request: request, lines } })
   if (error) throw new Error('요청을 이해하지 못했어요. 다시 적어 주세요.')
   if (data?.error) throw new Error(data.error)
-  const order = (data?.order ?? []).map((n: unknown) => Number(n)).filter((n: number) => Number.isInteger(n) && n >= 1 && n <= lines.length)
-  if (!order.length) throw new Error('요청을 이해하지 못했어요. 다시 적어 주세요.')
   const num = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : null)
-  return { order, note: String(data?.note ?? ''), startAt: num(data?.start_at), bpm: num(data?.bpm) }
+  const plan: PlanReply['plan'] = []
+  for (const raw of Array.isArray(data?.plan) ? data.plan : []) {
+    const r = raw as Record<string, unknown>
+    if (typeof r?.rest === 'number' && r.rest > 0) plan.push({ rest: Math.min(64, Math.round(r.rest)) })
+    else {
+      const line = Number(r?.line)
+      if (!Number.isInteger(line) || line < 1 || line > lines.length) continue
+      const item: { line: number; beats?: number; at?: number } = { line }
+      const b = num(r.beats)
+      if (b && b > 0 && b <= 128) item.beats = Math.round(b)
+      const at = num(r.at)
+      if (at !== null && at >= 0) item.at = at
+      plan.push(item)
+    }
+  }
+  return { plan, note: String(data?.note ?? ''), startAt: num(data?.start_at), bpm: num(data?.bpm), unclear: String(data?.unclear ?? '') }
 }

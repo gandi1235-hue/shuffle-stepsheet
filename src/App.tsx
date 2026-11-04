@@ -1,5 +1,6 @@
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import UpdateBanner from './components/UpdateBanner'
+import LevelUpWatcher from './components/LevelUp'
 import { ToastProvider } from './components/ui'
 import { AuthProvider, useAuth } from './lib/auth'
 import { applyPrefs, loadPrefs } from './lib/prefs'
@@ -30,6 +31,8 @@ function Gate() {
   }
   const pending = localStorage.getItem(PENDING_JOIN)
   return (
+    <>
+    <LevelUpWatcher />
     <Routes>
       <Route path="/" element={pending ? <Navigate to={`/join/${pending}`} replace /> : <StartPage />} />
       <Route path="/join/:code" element={<JoinPage />} />
@@ -45,6 +48,7 @@ function Gate() {
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   )
 }
 
