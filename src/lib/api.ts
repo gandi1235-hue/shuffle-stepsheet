@@ -43,7 +43,25 @@ export async function listSongs(folderId: string): Promise<SongWithSheets[]> {
     .eq('folder_id', folderId)
     .order('title')
   if (error) throw error
-  return (data ?? []).map((s) => ({ ...(s as Song), sheets: ((s.stepsheets as Stepsheet[]) ?? []).map((sh) => ({ ...sh, lines: normalizeLines(sh.lines) })) }))
+  return (data ?? [])
+    .map((s) => ({ ...(s as Song), sheets: ((s.stepsheets as Stepsheet[]) ?? []).map((sh) => ({ ...sh, lines: normalizeLines(sh.lines) })) }))
+    .filter((s) => s.sheets.length > 0) // 스텝지가 다 옮겨지거나 지워져 빈 노래는 목록에 안 보임
+}
+
+/** 제목 비교용: 공백·대소문자 무시 */
+export const titleKey = (t: string) => t.replace(/\s+/g, '').toLowerCase()
+
+/**
+ * 폴더에서 같은 노래 찾기. 제목이 같으면(공백·대소문자 무시) 가수 표기가 달라도 같은 노래로 봄 —
+ * "두아 리파" / "두아 리파, 백스트리트 보이즈"처럼 가수만 다르게 적혀 노래가 둘로 갈라지지 않게.
+ * 가수까지 같은 게 있으면 그걸 우선.
+ */
+export async function findSong(folderId: string, title: string, artist: string): Promise<Song | null> {
+  const { data } = await supabase.from('songs').select('*').eq('folder_id', folderId)
+  const key = titleKey(title)
+  const same = ((data as Song[]) ?? []).filter((s) => titleKey(s.title) === key)
+  if (!same.length) return null
+  return same.find((s) => s.artist.trim() === artist.trim()) ?? same.find((s) => !s.artist.trim()) ?? same[0]
 }
 
 export async function getSheet(id: string): Promise<Stepsheet | null> {
@@ -114,13 +132,12 @@ export async function saveSheet(input: SaveInput): Promise<Stepsheet> {
   const { data: user } = await supabase.auth.getUser()
   const title = input.title.trim()
   const artist = input.artist.trim()
-  let { data: song } = await supabase
-    .from('songs')
-    .select('*')
-    .eq('folder_id', input.folderId)
-    .eq('title', title)
-    .eq('artist', artist)
-    .maybeSingle()
+  let song = await findSong(input.folderId, title, artist)
+  if (song && !song.artist.trim() && artist) {
+    // 가수 없이 저장돼 있던 노래에 가수를 적어 주면 채워 둠
+    await supabase.from('songs').update({ artist }).eq('id', song.id)
+    song = { ...song, artist }
+  }
   if (!song) {
     const ins = await supabase.from('songs').insert({ folder_id: input.folderId, title, artist }).select('*').single()
     if (ins.error) throw ins.error
@@ -169,13 +186,7 @@ export async function saveSheet(input: SaveInput): Promise<Stepsheet> {
 }
 
 export async function findDuplicate(folderId: string, title: string, artist: string, creator: string) {
-  const { data: song } = await supabase
-    .from('songs')
-    .select('id')
-    .eq('folder_id', folderId)
-    .eq('title', title.trim())
-    .eq('artist', artist.trim())
-    .maybeSingle()
+  const song = await findSong(folderId, title, artist)
   if (!song) return null
   const { data } = await supabase
     .from('stepsheets')
@@ -188,10 +199,15 @@ export async function findDuplicate(folderId: string, title: string, artist: str
 
 /** 스텝지 삭제 (붙어 있던 음원·사진 파일도 함께 지움) */
 export async function deleteSheet(id: string) {
-  const { data: s } = await supabase.from('stepsheets').select('audio_path, photo_paths').eq('id', id).maybeSingle()
+  const { data: s } = await supabase.from('stepsheets').select('song_id, audio_path, photo_paths').eq('id', id).maybeSingle()
   const { error } = await supabase.from('stepsheets').delete().eq('id', id)
   if (error) throw error
-  const row = s as { audio_path?: string | null; photo_paths?: string[] | null } | null
+  const row = s as { song_id?: string; audio_path?: string | null; photo_paths?: string[] | null } | null
+  // 그 노래에 스텝지가 하나도 안 남으면 노래 줄도 지움 (빈 노래가 목록에 남지 않게)
+  if (row?.song_id) {
+    const { count } = await supabase.from('stepsheets').select('id', { count: 'exact', head: true }).eq('song_id', row.song_id)
+    if (count === 0) await supabase.from('songs').delete().eq('id', row.song_id)
+  }
   if (row?.audio_path) await supabase.storage.from('audio').remove([row.audio_path]).catch(() => undefined)
   if (row?.photo_paths?.length) await supabase.storage.from('photos').remove(row.photo_paths).catch(() => undefined)
 }
@@ -524,7 +540,7 @@ export function contentKey(lines: Line[]): string {
  * 편집만 조금 다른 복사본이 두 개 생기지 않게 하려는 것. 있으면 그 스텝지 id
  */
 export async function findSameContent(folderId: string, title: string, artist: string, src: Pick<Stepsheet, 'lines' | 'photo_paths'>): Promise<string | null> {
-  const { data: song } = await supabase.from('songs').select('id').eq('folder_id', folderId).eq('title', title.trim()).eq('artist', artist.trim()).maybeSingle()
+  const song = await findSong(folderId, title, artist)
   if (!song) return null
   const others = await listVersions(song.id)
   const myPhotos = new Set((src.photo_paths ?? []).map((p) => p.split('/').pop()))
