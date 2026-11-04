@@ -34,10 +34,12 @@ Deno.serve(async (req) => {
     const { images } = await req.json() as { images: { media_type: string; data: string }[] };
     if (!images?.length) throw new Error("이미지가 없습니다");
 
-    const text = Deno.env.get("GEMINI_API_KEY")
-      ? await viaGemini(images)
-      : Deno.env.get("ANTHROPIC_API_KEY")
-        ? await viaClaude(images)
+    const geminiKey = findKey(/gemini|google/i);
+    const claudeKey = findKey(/ant.?h?rop|claude/i);
+    const text = geminiKey
+      ? await viaGemini(images, geminiKey)
+      : claudeKey
+        ? await viaClaude(images, claudeKey)
         : (() => { throw new Error("AI 키가 설정되지 않았습니다 (GEMINI_API_KEY 또는 ANTHROPIC_API_KEY)"); })();
 
     const start = text.indexOf("{");
@@ -56,15 +58,22 @@ Deno.serve(async (req) => {
 });
 
 type Img = { media_type: string; data: string };
+
+// 비밀키 이름을 조금 다르게 적어도(예: "antrophic key") 찾도록 이름에 관계없이 패턴으로 검색
+function findKey(pattern: RegExp): string | undefined {
+  const env = Deno.env.toObject();
+  const hit = Object.entries(env).find(([k, v]) => pattern.test(k) && !k.startsWith("SUPABASE_") && v.trim());
+  return hit?.[1].trim();
+}
 const ASK = "이 스텝지를 위 양식의 JSON으로 정리해 주세요.";
 
-async function viaGemini(images: Img[]): Promise<string> {
+async function viaGemini(images: Img[], key: string): Promise<string> {
   const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": Deno.env.get("GEMINI_API_KEY")! },
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: SYSTEM }] },
         contents: [{
@@ -80,12 +89,12 @@ async function viaGemini(images: Img[]): Promise<string> {
   return (j.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? "").join("");
 }
 
-async function viaClaude(images: Img[]): Promise<string> {
+async function viaClaude(images: Img[], key: string): Promise<string> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-api-key": Deno.env.get("ANTHROPIC_API_KEY")!,
+      "x-api-key": key,
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
