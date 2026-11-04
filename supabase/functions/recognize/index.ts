@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
     if (!who?.id) {
       return new Response(JSON.stringify({ error: "로그인이 필요해요" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string }; video_sync?: { frames?: { media_type: string; data: string }[]; yt_url?: string; audio?: { media_type: string; data: string }; step?: number; duration?: number; bpm?: number }; yt_frames?: string; deep?: boolean; async?: boolean; sheet_id?: string };
+    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string; tier?: number }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string }; video_sync?: { frames?: { media_type: string; data: string }[]; yt_url?: string; audio?: { media_type: string; data: string }; step?: number; duration?: number; bpm?: number }; yt_frames?: string; deep?: boolean; async?: boolean; sheet_id?: string };
     const keys = detectKeys();
     keys.deep = body.deep === true; // 고급 추론(xhigh) 켰는지. 기본은 빠른 모델
     const { gemini: geminiKey, openai: openaiKey } = keys;
@@ -78,7 +78,15 @@ Deno.serve(async (req) => {
     // 모델 이름이 바뀌어도 되게: 키로 쓸 수 있는 모델 목록에서 이미지 생성 모델을 찾아 차례로 시도
     if (body.avatar?.data) {
       if (!openaiKey && !geminiKey) throw new Error("AI 아바타는 OpenAI 키나 Gemini 키가 있어야 만들 수 있어요");
-      const prompt = "Turn the person in this photo into a cute chibi-style full-body anime/webtoon illustration of a dancer (clean 2D cel-shaded look, soft gradients, glossy highlights, NOT 3D). Proportions about 3 heads tall, head near the top of the frame, whole body visible down to the shoes. Mid-dance pose, full of energy: one foot lifted, arm pointing or raised, big joyful smile with eyes open or happily closed. Keep their recognizable features: hair style and color, glasses, face shape, skin tone, age, and the outfit colors from the photo. Setting: standing on a glowing, reflective round stage floor under soft spotlights, dreamy lavender-purple stage background with warm bokeh lights, sparkles, glowing pink/lavender neon music notes floating around, and light swirl motion trails around the feet. Portrait 3:4, no text, no watermark.";
+      // 등급별 그림: 1 기본(신입·정회원) → 2 2급강사 → 3 1급강사 → 4 셔플킹/퀸. 갈수록 옷·무대가 화려해짐 (같은 사진이라 얼굴은 같은 사람)
+      const tier = Math.min(4, Math.max(1, Number(body.avatar.tier) || 1));
+      const TIER_LOOK: Record<number, string> = {
+        1: "Outfit: the clothes and colors from the photo, casual and friendly. Setting: standing on a glowing, reflective round stage floor under soft spotlights, dreamy lavender-purple stage background with warm bokeh lights, a few sparkles and glowing pink/lavender neon music notes floating around, light swirl motion trails around the feet.",
+        2: "Outfit: a stylish dance-instructor look that keeps the photo's main colors: sporty track jacket, a cap worn backwards, a small silver star pin on the chest. Setting: a dance studio stage with colorful blue and pink spotlights, mirror-wall reflections, many glowing neon music notes, more sparkles, a confident instructor pose with one hand pointing up.",
+        3: "Outfit: a premium star look: sleek sequined sparkling jacket with gold trim, a gold star pin, cool sunglasses pushed up on the head, flashy sneakers. Setting: a big concert stage with dramatic golden spotlight beams, gold confetti falling, cheering crowd silhouettes with glow sticks in the background, lens flares and lots of sparkles, a powerful show-off pose.",
+        4: "Outfit: a royal superstar look: a glowing golden crown on the head, a flowing shimmering cape over a dazzling gold-and-crimson stage outfit, gold accessories. Setting: a grand glowing throne-like stage with fireworks bursting in the night sky, gold and diamond sparkles everywhere, rainbow light rays, an epic triumphant hero pose, maximum bling and glamour.",
+      };
+      const prompt = `Turn the person in this photo into a cute chibi-style full-body anime/webtoon illustration of a dancer (clean 2D cel-shaded look, soft gradients, glossy highlights, NOT 3D). Proportions about 3 heads tall, head near the top of the frame, whole body visible down to the shoes. Mid-dance pose, full of energy: one foot lifted, big joyful smile. Keep their recognizable features exactly: hair style and color, glasses, face shape, skin tone, age, so every version is clearly the same person. ${TIER_LOOK[tier]} Portrait 3:4, no text, no letters, no watermark.`;
       const errors: string[] = [];
       // 1) OpenAI 키가 있으면 GPT 이미지(사진 편집: 얼굴 특징을 유지하는 input_fidelity=high)로 먼저
       if (openaiKey) {
@@ -146,7 +154,7 @@ Deno.serve(async (req) => {
           const parts: Part[] = j.candidates?.[0]?.content?.parts ?? [];
           const img = parts.map((p) => p.inlineData ?? p.inline_data).find((x) => x?.data);
           if (img) {
-            console.log(`[avatar] ok via ${model}`);
+            console.log(`[avatar] tier ${tier} ok via ${model}`);
             return new Response(JSON.stringify({ image: img.data, media_type: (img as { mimeType?: string }).mimeType ?? (img as { mime_type?: string }).mime_type ?? "image/png", model }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
           }
           const why = j.candidates?.[0]?.finishReason ?? j.promptFeedback?.blockReason ?? parts.map((p) => p.text).filter(Boolean).join(" ").slice(0, 120);

@@ -4,7 +4,8 @@ import Avatar from '../components/Avatar'
 import TopBar from '../components/TopBar'
 import HelpButton from '../components/HelpButton'
 import { Sheet as Modal, useToast } from '../components/ui'
-import { deleteMessage, getFolder, listMembers, listMessages, markRead, sendMessage, subscribeMessages, type Member, type Message } from '../lib/api'
+import { deleteMessage, getFolder, listMembers, listMessages, markRead, sendMessage, sheetCounts, subscribeMessages, type Member, type Message } from '../lib/api'
+import { levelOf } from '../lib/level'
 import { useAuth } from '../lib/auth'
 import type { Folder } from '../lib/types'
 
@@ -25,6 +26,11 @@ export default function ChatPage() {
   const toast = useToast()
   const [folder, setFolder] = useState<Folder | null>(null)
   const [members, setMembers] = useState<Record<string, Member>>({})
+  const [counts, setCounts] = useState<Map<string, number>>(new Map())
+  useEffect(() => {
+    sheetCounts().then(setCounts).catch(() => undefined)
+  }, [])
+  const lvOf = (uid: string) => levelOf(counts.get(uid) ?? 0)
   const [msgs, setMsgs] = useState<Message[]>([])
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
@@ -114,7 +120,7 @@ export default function ChatPage() {
               <div className={`msg ${mine ? 'mine' : ''} ${cont ? 'cont' : ''}`}>
                 {!mine && (
                   <button type="button" className="msg-who" onClick={() => mem && setDetail(mem)} aria-label={`${nameOf(m.user_id)} 정보`}>
-                    {!cont && <Avatar path={mem?.avatar_path} name={nameOf(m.user_id)} userId={m.user_id} size={36} />}
+                    {!cont && <Avatar path={mem?.avatar_path} tiers={mem?.avatar_tiers} level={lvOf(m.user_id)} badge={false} name={nameOf(m.user_id)} userId={m.user_id} size={36} />}
                   </button>
                 )}
                 <div className="msg-body">
@@ -134,7 +140,7 @@ export default function ChatPage() {
                 </div>
                 {mine && (
                   <Link to="/profile" className="msg-who" aria-label="내 프로필 바꾸기" style={{ visibility: cont ? 'hidden' : 'visible' }}>
-                    {!cont && <Avatar path={mem?.avatar_path} name={nameOf(m.user_id)} userId={m.user_id} size={36} />}
+                    {!cont && <Avatar path={mem?.avatar_path} tiers={mem?.avatar_tiers} level={lvOf(m.user_id)} badge={false} name={nameOf(m.user_id)} userId={m.user_id} size={36} />}
                   </Link>
                 )}
               </div>
@@ -170,7 +176,7 @@ export default function ChatPage() {
       <Modal open={!!detail} title="멤버 정보" onClose={() => setDetail(null)}>
         {detail && (
           <div className="who-card">
-            <Avatar path={detail.avatar_path} name={detail.name} userId={detail.user_id} size={96} />
+            <Avatar path={detail.avatar_path} tiers={detail.avatar_tiers} level={lvOf(detail.user_id)} badge={false} name={detail.name} userId={detail.user_id} size={96} />
             <div className="who-name">{detail.name}</div>
             <div className="who-real">본명 {detail.display_name || '(없음)'}</div>
             <span className="chip accent">{detail.role === 'owner' ? '주인' : detail.role === 'editor' ? '편집자' : '보기만'}</span>

@@ -48,7 +48,7 @@ export default function SettingsPage() {
       <TopBar title="설정" back="/" right={<HelpButton page="settings" />} />
       <div className="content">
         <Link to="/profile" className="card" style={{ marginBottom: 12 }}>
-          <Character path={profile?.avatar_path} name={profile?.nickname || profile?.display_name || '나'} userId={profile?.id} width={48} />
+          <Character path={profile?.avatar_path} tiers={profile?.avatar_tiers} level={level} name={profile?.nickname || profile?.display_name || '나'} userId={profile?.id} width={48} />
           <span className="grow">
             <span className="t">
               {profile?.nickname?.trim() || profile?.display_name || '내 프로필'} <span className="chip lv">{levelLabel(level)}</span>

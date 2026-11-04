@@ -165,6 +165,8 @@ end $$;
 -- ── 2026-11 추가: 닉네임·아바타·폴더 톡 ──
 alter table profiles add column if not exists nickname text not null default '';
 alter table profiles add column if not exists avatar_path text;
+-- 등급별 캐릭터 그림 4장 (기본·2급강사·1급강사·셔플킹/퀸)
+alter table profiles add column if not exists avatar_tiers text[];
 
 create table if not exists messages (
   id uuid primary key default gen_random_uuid(),

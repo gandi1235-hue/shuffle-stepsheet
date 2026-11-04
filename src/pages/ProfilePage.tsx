@@ -6,7 +6,7 @@ import TopBar from '../components/TopBar'
 import HelpButton from '../components/HelpButton'
 import { useToast } from '../components/ui'
 import { getProfile, makeAvatar, mySheetCount, shrinkImage, updateProfile, uploadAvatar, type Profile } from '../lib/api'
-import { levelLabel, needFor, nextTitle, progressOf, titleOf } from '../lib/level'
+import { TIER_IMAGE_NAMES, TITLES, imageTier, levelLabel, needFor, nextTitle, progressOf } from '../lib/level'
 
 /** 내 프로필: 캐릭터 그림 · 닉네임 · 레벨/칭호. 설정과 멤버 목록, 톡에서 내 이름을 눌러 들어온다 */
 export default function ProfilePage() {
@@ -22,7 +22,9 @@ export default function ProfilePage() {
     modeRef.current = mode
     fileRef.current?.click()
   }
-  const [preview, setPreview] = useState<{ blob: Blob; url: string } | null>(null)
+  /** 새 캐릭터 미리보기: AI면 등급별 4장, 그림 올리기면 1장 */
+  const [preview, setPreview] = useState<{ blobs: Blob[]; urls: string[] } | null>(null)
+  const [progress, setProgress] = useState('')
   const [err, setErr] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const prog = progressOf(sheets ?? 0)
@@ -61,21 +63,31 @@ export default function ProfilePage() {
     setErr('')
     setMaking(modeRef.current)
     try {
-      const blob = modeRef.current === 'ai' ? await makeAvatar(f) : await shrinkImage(f)
-      setPreview({ blob, url: URL.createObjectURL(blob) })
+      const blobs: Blob[] = []
+      if (modeRef.current === 'ai') {
+        // 등급별 4장: 기본 → 2급강사 → 1급강사 → 셔플킹/퀸. 승급할 때마다 다음 그림으로 바뀜
+        for (let t = 1; t <= 4; t++) {
+          setProgress(`${t}/4 ${TIER_IMAGE_NAMES[t - 1]} 그리는 중…`)
+          blobs.push(await makeAvatar(f, t))
+        }
+      } else blobs.push(await shrinkImage(f))
+      setPreview({ blobs, urls: blobs.map((b) => URL.createObjectURL(b)) })
     } catch (er) {
       setErr((er as Error).message)
     } finally {
       setMaking('')
+      setProgress('')
     }
   }
   const useAvatar = async () => {
     if (!preview) return
     setSaving(true)
     try {
-      const path = await uploadAvatar(preview.blob)
-      await updateProfile({ avatar_path: path })
-      setProfile((p) => (p ? { ...p, avatar_path: path } : p))
+      const paths: string[] = []
+      for (const b of preview.blobs) paths.push(await uploadAvatar(b))
+      const tiers = paths.length > 1 ? paths : null
+      await updateProfile({ avatar_path: paths[0], avatar_tiers: tiers })
+      setProfile((p) => (p ? { ...p, avatar_path: paths[0], avatar_tiers: tiers } : p))
       setPreview(null)
       toast('캐릭터를 바꿨어요')
     } catch (er) {
@@ -87,8 +99,8 @@ export default function ProfilePage() {
   const clearAvatar = async () => {
     if (!confirm('캐릭터 그림을 지우고 이름 첫 글자로 보일까요?')) return
     try {
-      await updateProfile({ avatar_path: null })
-      setProfile((p) => (p ? { ...p, avatar_path: null } : p))
+      await updateProfile({ avatar_path: null, avatar_tiers: null })
+      setProfile((p) => (p ? { ...p, avatar_path: null, avatar_tiers: null } : p))
     } catch (er) {
       setErr((er as Error).message)
     }
@@ -101,7 +113,7 @@ export default function ProfilePage() {
       <div className="content">
         <section className="panel">
           <div className="profile-row">
-            {preview ? <img className="character" src={preview.url} alt="새 캐릭터 미리보기" style={{ width: 110, height: 147 }} /> : <Character path={profile?.avatar_path} name={name} userId={profile?.id} width={110} />}
+            {preview ? <img className="character" src={preview.urls[Math.min(imageTier(level), preview.urls.length - 1)]} alt="새 캐릭터 미리보기" style={{ width: 110, height: 147 }} /> : <Character path={profile?.avatar_path} tiers={profile?.avatar_tiers} level={level} name={name} userId={profile?.id} width={110} />}
             <div className="grow">
               <div className="who-name" style={{ fontSize: 19 }}>{name}</div>
               <div className="panel-desc">본명 {profile?.display_name || '(없음)'}</div>
@@ -116,6 +128,26 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
+          {preview && preview.urls.length > 1 && (
+            <div className="tier-row">
+              {preview.urls.map((u, i) => (
+                <figure key={i} className={i === imageTier(level) ? 'now' : ''}>
+                  <img src={u} alt={TIER_IMAGE_NAMES[i]} />
+                  <figcaption>{TIER_IMAGE_NAMES[i]}</figcaption>
+                </figure>
+              ))}
+            </div>
+          )}
+          {!preview && profile?.avatar_tiers && profile.avatar_tiers.length > 1 && (
+            <div className="tier-row">
+              {profile.avatar_tiers.map((pth, i) => (
+                <figure key={pth} className={i === imageTier(level) ? 'now' : i > imageTier(level) ? 'locked' : ''}>
+                  <Character path={pth} name={name} userId={profile.id} width={64} />
+                  <figcaption>{i > imageTier(level) ? '🔒 ' : ''}{TIER_IMAGE_NAMES[i]}</figcaption>
+                </figure>
+              ))}
+            </div>
+          )}
           {preview ? (
             <div className="row-btns" style={{ display: 'flex', gap: 8 }}>
               <button type="button" className="btn" style={{ flex: 1 }} onClick={() => setPreview(null)} disabled={saving}>
@@ -128,7 +160,7 @@ export default function ProfilePage() {
           ) : (
             <div className="row-btns" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button type="button" className="btn primary" style={{ flex: 2, minWidth: 170 }} onClick={() => pick('ai')} disabled={!!making}>
-                {making === 'ai' ? '만드는 중… (20초쯤)' : '✨ 사진으로 AI 캐릭터 만들기'}
+                {making === 'ai' ? progress || '만드는 중…' : '✨ 사진으로 AI 캐릭터 4장 만들기'}
               </button>
               <button type="button" className="btn" style={{ flex: 1 }} onClick={() => pick('photo')} disabled={!!making}>
                 {making === 'photo' ? '…' : '그림 그대로 올리기'}
@@ -141,7 +173,7 @@ export default function ProfilePage() {
             </div>
           )}
           <input ref={fileRef} type="file" accept="image/*" className="sr-only" onChange={onFile} />
-          <div className="panel-desc">AI 캐릭터는 얼굴이 잘 보이는 사진 한 장이면 돼요(전신 사진이면 옷까지 닮아요). 이미 만든 그림이 있으면 그대로 올려도 돼요. 세로 전신 그림이 잘 어울려요.</div>
+          <div className="panel-desc">AI 캐릭터는 얼굴이 잘 보이는 사진 한 장이면 돼요(전신이면 옷까지 닮아요). 기본·2급강사·1급강사·셔플킹/퀸 4장을 한 번에 그려서, 승급할 때마다 더 화려한 그림으로 바뀌어요 (1~2분 걸려요). 이미 만든 그림이 있으면 그대로 올려도 돼요.</div>
         </section>
 
         <section className="panel">
@@ -157,10 +189,21 @@ export default function ProfilePage() {
         </section>
 
         <section className="panel">
-          <div className="panel-title">레벨과 칭호</div>
-          <div className="panel-desc">
-            다음 레벨에 필요한 스텝지가 1장, 2장, 3장… 늘어나요. 누적으로 Lv.2 1장, Lv.3 3장, Lv.4 6장, Lv.5 10장, Lv.6 15장, Lv.7 21장. <b>Lv.{titleLevel('2급강사')}</b>({needFor(titleLevel('2급강사'))}장)부터 2급강사, <b>Lv.{titleLevel('1급강사')}</b>({needFor(titleLevel('1급강사'))}장)부터 1급강사예요.
+          <div className="panel-title">레벨과 등급</div>
+          <div className="tier-table">
+            {TITLES.map((t, i) => {
+              const next = TITLES[i + 1]
+              const range = next ? (next.lv - t.lv === 1 ? `Lv.${t.lv}` : `Lv.${t.lv}~${next.lv - 1}`) : `Lv.${t.lv}~`
+              return (
+                <div key={t.lv} className={level >= t.lv && (!next || level < next.lv) ? 'now' : ''}>
+                  <b>{t.title}</b>
+                  <span>{range}</span>
+                  <small>스텝지 {needFor(t.lv)}장부터</small>
+                </div>
+              )
+            })}
           </div>
+          <div className="panel-desc">다음 레벨에 필요한 스텝지가 1장, 2장, 3장… 늘어나요. 등급이 오르면 AI 캐릭터도 더 화려한 그림으로 바뀌어요.</div>
           <button type="button" className="btn block" onClick={() => setDemo(true)}>
             ✨ 레벨업 연출 미리 보기
           </button>
@@ -172,9 +215,4 @@ export default function ProfilePage() {
       {demo && <LevelUpOverlay info={{ from: level, to: level + 1, profile, sheets: needFor(level + 1) }} onClose={() => setDemo(false)} />}
     </div>
   )
-}
-
-const titleLevel = (t: string) => {
-  for (let lv = 1; lv < 100; lv++) if (titleOf(lv) === t) return lv
-  return 0
 }

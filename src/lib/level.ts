@@ -26,11 +26,25 @@ export function seenLevel(uid: string): number | null {
 export function rememberLevel(uid: string, lv: number) {
   localStorage.setItem(KEY(uid), String(lv))
 }
-/** 칭호 기준: 2급강사 Lv.5(스텝지 10장), 1급강사 Lv.7(21장) */
+/** 등급 기준: 신입회원 Lv.1, 정회원 Lv.2~4, 2급강사 Lv.5~9, 1급강사 Lv.10~19, 셔플킹/퀸 Lv.20~ */
 export const TITLES: { lv: number; title: string }[] = [
+  { lv: 1, title: '신입회원' },
+  { lv: 2, title: '정회원' },
   { lv: 5, title: '2급강사' },
-  { lv: 7, title: '1급강사' },
+  { lv: 10, title: '1급강사' },
+  { lv: 20, title: '셔플킹/퀸' },
 ]
+/** 등급 번호 0~4 (TITLES 순서) */
+export function tierOf(lv: number): number {
+  let t = 0
+  TITLES.forEach((x, i) => {
+    if (lv >= x.lv) t = i
+  })
+  return t
+}
+/** 캐릭터 그림 번호 0~3: 신입·정회원은 기본 그림, 2급강사·1급강사·셔플킹/퀸은 승급할 때마다 더 화려한 그림 */
+export const imageTier = (lv: number) => Math.max(0, tierOf(lv) - 1)
+export const TIER_IMAGE_NAMES = ['기본', '2급강사', '1급강사', '셔플킹/퀸']
 export function titleOf(lv: number): string {
   let t = ''
   for (const x of TITLES) if (lv >= x.lv) t = x.title

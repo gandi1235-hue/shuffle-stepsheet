@@ -271,17 +271,19 @@ export interface Member {
   display_name: string
   nickname: string
   avatar_path: string | null
+  /** 등급별 캐릭터 그림 4장 (기본·2급강사·1급강사·셔플킹/퀸). AI로 만들었을 때만 */
+  avatar_tiers: string[] | null
   /** 화면에 보이는 이름: 닉네임이 있으면 닉네임, 없으면 본명 */
   name: string
 }
 
-type ProfileRow = { display_name: string; nickname?: string | null; avatar_path?: string | null }
+type ProfileRow = { display_name: string; nickname?: string | null; avatar_path?: string | null; avatar_tiers?: string[] | null }
 const shownName = (p: ProfileRow | null | undefined) => (p?.nickname?.trim() || p?.display_name || '').trim()
 
 export async function listMembers(folderId: string): Promise<Member[]> {
   const { data, error } = await supabase
     .from('folder_members')
-    .select('user_id, role, profiles(display_name, nickname, avatar_path)')
+    .select('user_id, role, profiles(display_name, nickname, avatar_path, avatar_tiers)')
     .eq('folder_id', folderId)
   if (error) throw error
   return (data ?? []).map((m) => {
@@ -292,6 +294,7 @@ export async function listMembers(folderId: string): Promise<Member[]> {
       display_name: p?.display_name ?? '',
       nickname: p?.nickname ?? '',
       avatar_path: p?.avatar_path ?? null,
+      avatar_tiers: p?.avatar_tiers ?? null,
       name: shownName(p) || '이름 없음',
     }
   })
@@ -320,17 +323,19 @@ export interface Profile {
   display_name: string
   nickname: string
   avatar_path: string | null
+  /** 등급별 캐릭터 그림 4장 (AI로 만들었을 때만) */
+  avatar_tiers: string[] | null
 }
 
 export async function getProfile(): Promise<Profile | null> {
   const uid = (await supabase.auth.getUser()).data.user?.id
   if (!uid) return null
-  const { data, error } = await supabase.from('profiles').select('id, display_name, nickname, avatar_path').eq('id', uid).maybeSingle()
+  const { data, error } = await supabase.from('profiles').select('id, display_name, nickname, avatar_path, avatar_tiers').eq('id', uid).maybeSingle()
   if (error) throw error
-  return data ? { id: data.id, display_name: data.display_name, nickname: data.nickname ?? '', avatar_path: data.avatar_path ?? null } : null
+  return data ? { id: data.id, display_name: data.display_name, nickname: data.nickname ?? '', avatar_path: data.avatar_path ?? null, avatar_tiers: (data.avatar_tiers as string[] | null) ?? null } : null
 }
 
-export async function updateProfile(patch: { nickname?: string; avatar_path?: string | null }) {
+export async function updateProfile(patch: { nickname?: string; avatar_path?: string | null; avatar_tiers?: string[] | null }) {
   const uid = (await supabase.auth.getUser()).data.user?.id
   if (!uid) throw new Error('로그인이 필요해요')
   const { error } = await supabase.from('profiles').update(patch).eq('id', uid)
@@ -354,8 +359,8 @@ export async function uploadAvatar(blob: Blob): Promise<string> {
 }
 
 /** 사진을 정사각형 작은 그림으로 (그대로 아바타로 쓸 때) */
-/** 사진 → AI 전신 캐릭터 (엣지 함수가 Gemini 이미지 모델 호출). 결과는 그림 Blob */
-export async function makeAvatar(file: File): Promise<Blob> {
+/** 사진 → AI 전신 캐릭터 (엣지 함수가 이미지 모델 호출). tier 1~4 = 기본·2급강사·1급강사·셔플킹/퀸 (갈수록 화려). 결과는 그림 Blob */
+export async function makeAvatar(file: File, tier = 1): Promise<Blob> {
   const small = await shrinkImage(file, 768)
   const b64 = await new Promise<string>((res, rej) => {
     const r = new FileReader()
@@ -363,7 +368,7 @@ export async function makeAvatar(file: File): Promise<Blob> {
     r.onerror = () => rej(new Error('사진을 읽지 못했어요'))
     r.readAsDataURL(small)
   })
-  const { data, error } = await supabase.functions.invoke('recognize', { body: { avatar: { media_type: small.type || 'image/jpeg', data: b64 } } })
+  const { data, error } = await supabase.functions.invoke('recognize', { body: { avatar: { media_type: small.type || 'image/jpeg', data: b64, tier } } })
   if (error) {
     const msg = await (error as { context?: Response }).context?.json?.().then((j: { error?: string }) => j?.error).catch(() => undefined)
     throw new Error(msg || '아바타를 만들지 못했어요. 잠시 뒤 다시 해 보세요')

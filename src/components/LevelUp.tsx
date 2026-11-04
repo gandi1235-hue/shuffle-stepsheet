@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { getProfile, mySheetCount, type Profile } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import { levelOf, rememberLevel, seenLevel, titleOf } from '../lib/level'
+import { imageTier, levelOf, rememberLevel, seenLevel, titleOf } from '../lib/level'
 import { haptic } from '../lib/prefs'
 import { Character } from './Avatar'
 
@@ -43,14 +43,14 @@ export function LevelUpOverlay({ info, onClose }: { info: LevelUpInfo; onClose: 
             <span key={i} className="spark" style={{ ['--i' as string]: i }} />
           ))}
           <div className="levelup-glow" />
-          <Character path={info.profile?.avatar_path} name={name} userId={info.profile?.id} width={140} className="shine" />
+          <Character path={info.profile?.avatar_path} tiers={info.profile?.avatar_tiers} level={info.to} name={name} userId={info.profile?.id} width={140} className="shine" />
         </div>
         <div className="levelup-lv">
           <span className="old">Lv.{info.from}</span>
           <span className="arrow">→</span>
           <span className="new">Lv.{info.to}</span>
         </div>
-        {newTitle && <div className="levelup-title-badge">🏅 {title}가 됐어요!</div>}
+        {newTitle && <div className="levelup-title-badge">🏅 {title}{title.endsWith('퀸') ? '이' : '가'} 됐어요!{info.profile?.avatar_tiers && imageTier(info.to) > imageTier(info.from) ? ' 캐릭터도 새 모습!' : ''}</div>}
         <div className="levelup-name">{name} · 스텝지 {info.sheets}장{title && !newTitle ? ` · ${title}` : ''}</div>
         <div className="levelup-close">아무 데나 누르면 닫혀요</div>
       </div>

@@ -91,7 +91,7 @@ export default function MembersPage() {
           {members.map((m) => (
             <div className="member" key={m.user_id}>
               <button type="button" className="nm who" onClick={() => (m.user_id === session?.user.id ? nav('/profile') : setDetail(m))} title={m.user_id === session?.user.id ? '내 프로필 바꾸기' : '자세히'}>
-                <Avatar path={m.avatar_path} name={m.name} userId={m.user_id} size={40} level={lv(m.user_id)} />
+                <Avatar path={m.avatar_path} tiers={m.avatar_tiers} name={m.name} userId={m.user_id} size={40} level={lv(m.user_id)} />
                 <span>
                   {m.name}
                   {m.user_id === session?.user.id && <span style={{ color: 'var(--faint)', fontSize: 14 }}> (나)</span>}
@@ -125,7 +125,7 @@ export default function MembersPage() {
       <Modal open={!!detail} title="멤버 정보" onClose={() => setDetail(null)}>
         {detail && (
           <div className="who-card">
-            <Character path={detail.avatar_path} name={detail.name} userId={detail.user_id} width={108} />
+            <Character path={detail.avatar_path} tiers={detail.avatar_tiers} level={lv(detail.user_id)} name={detail.name} userId={detail.user_id} width={108} />
             <div className="who-name">{detail.name}</div>
             <span className="chip lv">{levelLabel(lv(detail.user_id))} · 스텝지 {counts.get(detail.user_id) ?? 0}장</span>
             <div className="who-real">본명 {detail.display_name || '(없음)'}{detail.nickname.trim() ? '' : ' · 닉네임 없음'}</div>
