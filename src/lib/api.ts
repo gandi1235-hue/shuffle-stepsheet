@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { normalizeLines, stepNames, type Folder, type Recognized, type Role, type Song, type Stepsheet, type SyncData } from './types'
+import { normalizeLines, stepNames, type Folder, type Line, type Recognized, type Role, type Song, type Stepsheet, type SyncData } from './types'
 
 export async function listFolders(): Promise<Folder[]> {
   // 내 멤버 줄만! (공유 폴더는 다른 멤버의 줄도 읽을 수 있어서, 안 거르면 같은 폴더가 멤버 수만큼 나오고 권한도 남의 것이 보였음)
