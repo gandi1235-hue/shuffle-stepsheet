@@ -1,4 +1,4 @@
-import { barBeats, beatsOf, kindOf, type Stepsheet, type SyncEvent, type SyncPlanItem } from './types'
+import { againBeats, barBeats, beatsOf, kindOf, type Stepsheet, type SyncEvent, type SyncPlanItem } from './types'
 
 export const DEFAULT_BPM = 128
 const r1 = (x: number) => Math.round(x * 10) / 10
@@ -20,10 +20,12 @@ export function stepIdxOf(sheet: Lines) {
 }
 /** 한 줄의 박수. 안 적혀 있으면 8박 */
 export function lineBeats(sheet: Lines, i: number) {
-  const b = sheet.lines[i].steps.reduce((n, st) => n + beatsOf(st.beats), 0)
-  if (b > 0) return b
-  const bars = barBeats(sheet.lines[i].steps)
-  return bars > 0 ? bars : 8
+  const steps = sheet.lines[i].steps
+  const extra = againBeats(steps) // 반복 도장만큼 이 줄이 더 길어짐
+  const b = steps.reduce((n, st) => n + beatsOf(st.beats), 0)
+  if (b > 0) return b + extra
+  const bars = barBeats(steps)
+  return (bars > 0 ? bars : 8) + extra
 }
 /** 박수가 적혀 있지도, 8박 도장이 찍혀 있지도 않아 8박으로 추정하는 줄인지 */
 export function beatsGuessed(sheet: Lines, i: number) {
@@ -186,7 +188,7 @@ export function orderPromptLines(sheet: Lines): string[] {
     if (kind === 'repeat') out.push(`   ↻ 반복 줄: "${l.label ?? ''}"${labelBeats(l.label) ? ` (바로 앞 ${labelBeats(l.label)}박을 한 번 더)` : ''}`)
     if (kind === 'rest' && labelBeats(l.label)) out.push(`   (쉼: ${labelBeats(l.label)}박)`)
     const k = idx.indexOf(i)
-    if (k >= 0) out.push(`${k + 1}. ${section ? `[${section}] ` : ''}${l.steps.map((s) => `${s.name}${s.beats ? ' ' + s.beats : ''}${s.bar ? ' |' : ''}`).join(' / ')} (${lineBeats(sheet, i)}박${beatsGuessed(sheet, i) ? ', 안 적혀 있어 8박으로 추정' : barBeats(l.steps) > 0 && !l.steps.some((s) => beatsOf(s.beats) > 0) ? ', |는 8박 경계' : ''})`)
+    if (k >= 0) out.push(`${k + 1}. ${section ? `[${section}] ` : ''}${l.steps.map((s) => `${s.name}${s.beats ? ' ' + s.beats : ''}${s.again ? ` ↻${s.again}박반복` : ''}${s.bar ? ' |' : ''}`).join(' / ')} (${lineBeats(sheet, i)}박${beatsGuessed(sheet, i) ? ', 안 적혀 있어 8박으로 추정' : barBeats(l.steps) > 0 && !l.steps.some((s) => beatsOf(s.beats) > 0) ? ', |는 8박 경계' : ''}${againBeats(l.steps) ? `, ↻는 앞 구절 반복으로 ${againBeats(l.steps)}박 포함` : ''})`)
   })
   return out
 }

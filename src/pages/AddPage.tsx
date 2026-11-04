@@ -227,6 +227,18 @@ export default function AddPage() {
     setTexts((x) => ({ ...x, [i]: lineToText(next) }))
     haptic(10)
   }
+  /** 반복 도장: 스텝 j 뒤에 "↻N" (없으면 8박으로 켜고, 있으면 끔) / 박수 바꾸기 */
+  const setAgain = (i: number, j: number, n: number | null) => {
+    const l = data.lines[i]
+    const steps = l.steps.map((st, k) => {
+      if (k !== j) return st
+      const { again: _drop, ...rest } = st
+      return n && n > 0 ? { ...rest, again: n } : rest
+    })
+    const next = { ...l, steps }
+    setLine(i, next)
+    setTexts((x) => ({ ...x, [i]: lineToText(next) }))
+  }
   const shiftTexts = (from: number, delta: number, drop?: number) =>
     setTexts((x) => {
       const o: Record<number, string> = {}
@@ -416,7 +428,7 @@ export default function AddPage() {
               🎤 말로 고치기
             </button>
             <button type="button" className={barMode ? 'btn on' : 'btn'} style={{ minHeight: 44 }} onClick={() => setBarMode((v) => !v)} title="박수가 안 적힌 스텝지에 8박 경계를 찍어요">
-              {barMode ? '📍 찍기 끝' : '📍 8박 찍기'}
+              {barMode ? '📍 찍기 끝' : '📍 도장 찍기'}
             </button>
             {undoLines && (
               <button type="button" className="btn" style={{ minHeight: 44 }} onClick={undoAsk}>
@@ -427,7 +439,7 @@ export default function AddPage() {
           {askNote && <div className="panel-desc" style={{ padding: '0 12px 6px' }}>방금 고친 것: {askNote}</div>}
           {barMode && (
             <div className="panel-desc" style={{ padding: '0 12px 6px' }}>
-              박수가 안 적힌 줄에서 <b>한 구절(8박)이 끝나는 스텝을 누르세요.</b> 그 스텝 뒤에 ┃ 도장이 찍히고, 도장 하나가 8박으로 계산돼요. 다시 누르면 지워져요. 반복·쉬기 줄은 박수를 고르면 "8박 반복"처럼 적혀서 동기화 때 앞 구절을 그만큼 다시 추는 걸로 계산해요.
+              <b>스텝을 누르면 ┃ 8박 도장</b>(여기서 한 구절 끝, 도장 하나 = 8박), <b>↻를 누르면 반복 도장</b>(여기서 앞 구절을 몇 박 더 추는지 칸에 적기). 다시 누르면 지워져요. 반복·쉬기 줄은 박수를 고르면 "8박 반복"처럼 적혀요.
             </div>
           )}
           {(() => {
@@ -448,11 +460,22 @@ export default function AddPage() {
                       {l.steps.filter((st) => st.name.trim()).length ? (
                         l.steps.map((st, j) =>
                           st.name.trim() ? (
-                            <button type="button" key={j} className={st.bar ? 'chip on' : 'chip'} onClick={() => toggleBar(i, j)}>
-                              {st.name}
-                              {st.beats ? <small> {st.beats}</small> : null}
-                              {st.bar ? <b> ┃</b> : null}
-                            </button>
+                            <span className="chipgrp" key={j}>
+                              <button type="button" className={st.bar ? 'chip on' : 'chip'} onClick={() => toggleBar(i, j)} title="여기서 8박 끝">
+                                {st.name}
+                                {st.beats ? <small> {st.beats}</small> : null}
+                                {st.bar ? <b> ┃</b> : null}
+                              </button>
+                              <button type="button" className={st.again ? 'chip mini on' : 'chip mini'} onClick={() => { setAgain(i, j, st.again ? null : 8); haptic(10) }} title="여기서 앞 구절 반복">
+                                ↻
+                              </button>
+                              {st.again ? (
+                                <label className="againbox">
+                                  <input type="number" inputMode="numeric" min={1} max={128} value={st.again} aria-label="반복 박수" onChange={(e) => setAgain(i, j, Number(e.target.value) || null)} onBlur={(e) => { if (!Number(e.target.value)) setAgain(i, j, 8) }} />
+                                  박 반복
+                                </label>
+                              ) : null}
+                            </span>
                           ) : null,
                         )
                       ) : (

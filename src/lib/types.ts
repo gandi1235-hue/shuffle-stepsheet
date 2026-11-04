@@ -42,6 +42,8 @@ export interface Step {
   uncertain?: boolean
   /** 8박 도장: 박수가 안 적힌 스텝지에서 "이 스텝에서 한 구절(8박)이 끝남"을 사용자가 찍어 둔 표시 (글로는 뒤에 " |") */
   bar?: boolean
+  /** 반복 도장: 이 스텝 뒤에서 앞 N박을 한 번 더 춤 (글로는 뒤에 " ↻8"). 동기화에서는 이 줄이 N박 더 길어짐 */
+  again?: number
 }
 
 /** 줄 종류: steps 일반 / section 구간 제목 / repeat 반복 지시 / rest 쉼·전환 / text 그 밖의 글 */
@@ -139,7 +141,7 @@ export const normalizeLines = (ls: unknown): Line[] => (Array.isArray(ls) ? ls :
 
 /** 스텝 줄 → 한 줄 글 ("런닝맨 4 / 티스텝 4") */
 export function lineToText(l: Line): string {
-  return l.steps.map((s) => `${s.beats ? `${s.name} ${fmtBeats(s.beats)}` : s.name}${s.bar ? ' |' : ''}`).join(' / ')
+  return l.steps.map((s) => `${s.beats ? `${s.name} ${fmtBeats(s.beats)}` : s.name}${s.again ? ` ↻${s.again}` : ''}${s.bar ? ' |' : ''}`).join(' / ')
 }
 /** 한 줄 글 → 스텝들. " / "로 나누고 맨 뒤 숫자를 박수로. " | "는 8박 도장(앞 스텝에서 한 구절 끝) */
 export function parseLineText(text: string): Step[] {
@@ -149,13 +151,25 @@ export function parseLineText(text: string): Step[] {
     const t = parts[i].trim()
     const sep = parts[i + 1] ?? ''
     if (t) {
-      const m = t.match(/^(.*?)[\s(]*(\d+)\s*박?\)?$/)
-      out.push(m && m[1].trim() ? { name: m[1].trim(), beats: m[2] } : { name: t, beats: '' })
+      // "↻8" 또는 "(8박 반복)" 꼬리표 → 반복 도장
+      let again = 0
+      const body = t
+        .replace(/\s*(?:↻|\(\s*)(\d+)\s*박?\s*(?:반복)?\s*\)?\s*$/, (_, n) => {
+          again = Number(n)
+          return ''
+        })
+        .trim()
+      const m = body.match(/^(.*?)[\s(]*(\d+)\s*박?\)?$/)
+      const st: Step = m && m[1].trim() ? { name: m[1].trim(), beats: m[2] } : { name: body || t, beats: '' }
+      if (again > 0) st.again = again
+      out.push(st)
     }
     if (sep.includes('|') && out.length) out[out.length - 1].bar = true
   }
   return out
 }
+/** 반복 도장으로 더 추는 박수 합 (↻8 + ↻16 = 24) */
+export const againBeats = (steps: Step[]) => steps.reduce((n, s) => n + (s.again && s.again > 0 ? s.again : 0), 0)
 /** 8박 도장으로 센 줄 박수: 도장 수 × 8, 마지막 도장 뒤에 스텝이 더 있으면 +8. 도장이 없으면 0 */
 export function barBeats(steps: Step[]): number {
   const named = steps.filter((s) => s.name.trim())

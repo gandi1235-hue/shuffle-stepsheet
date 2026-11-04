@@ -77,6 +77,11 @@ export default function SheetTable({ title, artist, creator, creatorInfo, lines,
                             {s.name}
                           </span>
                           {s.beats && <span className="beats">{fmtBeats(s.beats)}</span>}
+                          {s.again ? (
+                            <span className="again" title={`앞 ${s.again}박 한 번 더`}>
+                              ↻{s.again}
+                            </span>
+                          ) : null}
                           {s.bar && (
                             <span className="bar8" title="여기서 8박 끝">
                               ┃
