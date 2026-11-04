@@ -72,8 +72,8 @@ export default function SheetPage() {
   /** 수정 화면으로. 수정 완료로 표시된 스텝지면 한 번 묻는다 */
   const goEdit = () => {
     if (!sheet) return
-    if (sheet.finalized && !confirm('이 스텝지는 "수정 완료"로 표시돼 있어요.\n그래도 고칠까요? 고치면 수정 완료 표시가 풀려요.')) return
-    nav(`/edit/${sheet.id}`)
+    if (sheet.finalized && !confirm('⚠️ 이 스텝지는 "수정 완료"로 표시돼 있어요.\n그래도 고칠까요? 고쳐서 저장하면 수정 완료 표시가 풀려요.')) return
+    nav(`/edit/${sheet.id}`, { state: { okFinal: true } })
   }
   const toggleFinalized = async () => {
     if (!sheet) return
@@ -141,6 +141,7 @@ export default function SheetPage() {
   }
 
   const editMemo = async () => {
+    if (sheet.finalized && !confirm('⚠️ "수정 완료"로 표시된 스텝지예요. 비고를 고칠까요? (수정 완료 표시는 그대로 둬요)')) return
     const memo = prompt('비고 (예: Y스텝시 손동작 있음)', sheet.memo ?? '')
     if (memo === null) return
     try {
@@ -257,10 +258,24 @@ export default function SheetPage() {
         ))}
       </Modal>
 
-      {sheet.finalized && (
-
-        <div className="final-chip no-print">✔ 수정 완료 · 검토가 끝난 스텝지예요</div>
-
+      {sheet.finalized ? (
+        <div className="final-chip no-print">
+          <span className="grow">✔ 수정 완료 · 검토가 끝난 스텝지예요{canEdit ? '. 고치려면 한 번 더 물어봐요' : ''}</span>
+          {canEdit && (
+            <button type="button" className="btn tiny" onClick={toggleFinalized}>
+              표시 풀기
+            </button>
+          )}
+        </div>
+      ) : (
+        canEdit && (
+          <div className="final-row no-print">
+            <span className="grow">검토가 끝났으면 표시해 두세요. 이후 고치려 하면 경고해요.</span>
+            <button type="button" className="btn tiny final-btn" onClick={toggleFinalized}>
+              ✔ 수정 완료
+            </button>
+          </div>
+        )
       )}
 
       {showPhotos ? (

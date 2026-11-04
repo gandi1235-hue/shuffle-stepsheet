@@ -128,7 +128,7 @@ export function normalizeLine(raw: unknown): Line {
   const kind: LineKind = (['steps', 'section', 'repeat', 'rest', 'text'] as LineKind[]).includes(l.kind as LineKind) ? (l.kind as LineKind) : 'steps'
   const steps: Step[] = kind === 'steps'
     ? (Array.isArray(l.steps) ? l.steps : [])
-        .map((s) => ({ name: String(s?.name ?? '').trim(), beats: fmtBeats(String(s?.beats ?? '')), ...(s?.raw && s.raw !== s.name ? { raw: String(s.raw) } : {}), ...(s?.uncertain ? { uncertain: true } : {}) }))
+        .map((s) => ({ name: String(s?.name ?? '').trim(), beats: fmtBeats(String(s?.beats ?? '')), ...(s?.raw && s.raw !== s.name ? { raw: String(s.raw) } : {}), ...(s?.uncertain ? { uncertain: true } : {}), ...(s?.bar ? { bar: true } : {}), ...(Number(s?.again) > 0 ? { again: Number(s?.again) } : {}) }))
         .filter((s) => s.name)
     : []
   const notes = (Array.isArray(l.notes) ? l.notes : []).map((n) => ({ text: String(n?.text ?? '').trim(), ...(n?.type ? { type: n.type } : {}) })).filter((n) => n.text)

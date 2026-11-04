@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import TopBar from '../components/TopBar'
 import DeepToggle from '../components/DeepToggle'
 import { Sheet as Modal, useToast } from '../components/ui'
@@ -13,6 +13,7 @@ type Stage = 'photo' | 'recognizing' | 'edit' | 'saving'
 
 export default function AddPage() {
   const nav = useNavigate()
+  const loc = useLocation()
   const { id: editId } = useParams()
   const [params] = useSearchParams()
   const [folders, setFolders] = useState<Folder[]>([])
@@ -117,7 +118,15 @@ export default function AddPage() {
     if (editId)
       getSheet(editId).then((s) => {
         if (!s) return
-        if (s.finalized) setFinalWarn(true)
+        if (s.finalized) {
+          setFinalWarn(true)
+          // 스텝지 화면에서 이미 물어봤으면(okFinal) 다시 안 묻고, 링크 등으로 바로 들어왔으면 한 번 묻는다
+          const okFinal = (loc.state as { okFinal?: boolean } | null)?.okFinal
+          if (!okFinal && !confirm('⚠️ 이 스텝지는 "수정 완료"로 표시돼 있어요.\n그래도 고칠까요? 고쳐서 저장하면 수정 완료 표시가 풀려요.')) {
+            nav(`/sheet/${s.id}`, { replace: true })
+            return
+          }
+        }
         setFolderId(s.folder_id)
         setAudioUrl(s.audio_url ?? '')
         setHasAudioPath(Boolean(s.audio_path))
@@ -168,6 +177,7 @@ export default function AddPage() {
     if (!folderId) return setErr('저장할 폴더를 골라 주세요.')
     const unsure = data.lines.reduce((n, l) => n + l.steps.filter((s) => s.uncertain && s.name.trim()).length, 0)
     if (unsure > 0 && !confirm(`노란 칸(확실하지 않은 글자)이 ${unsure}개 남아 있어요.\n확인: 그대로 저장 (노란 표시는 남아요) / 취소: 돌아가서 고치기`)) return
+    if (finalWarn && !confirm('⚠️ "수정 완료"로 표시된 스텝지예요.\n저장하면 수정 완료 표시가 풀려요. 그래도 저장할까요?')) return
     setStage('saving')
     try {
       let artist = data.artist.trim()

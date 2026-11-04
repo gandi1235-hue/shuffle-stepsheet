@@ -370,6 +370,7 @@ export default function SyncPage() {
       <TopBar title="노래 동기화" sub={`${sheet.song?.title ?? ''} · ${sheet.creator_name}`} back={`/sheet/${sheet.id}`} />
       <div className="content sync-content">
         {!canEdit && <div className="notice">이 폴더에서 편집 권한이 없어 저장은 안 돼요.</div>}
+        {sheet.finalized && <div className="notice warn">✔ 수정 완료로 표시된 스텝지예요. 여기서는 동기화(시각)만 바뀌고 표시는 그대로예요.</div>}
         {noPlayer && <div className="notice">음원이 없어요. 수정 화면에서 음원 파일이나 유튜브 링크를 넣은 뒤 동기화할 수 있어요.</div>}
         <SheetTable
           title={sheet.song?.title ?? ''}

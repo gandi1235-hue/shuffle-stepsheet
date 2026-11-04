@@ -58,6 +58,7 @@ export default function SongList({ songs, grouped = true }: { songs: SongWithShe
                       <span className="title">
                         {s.title}
                         {n > 1 && <span className="count"> ({n})</span>}
+                        {n === 1 && sheets[0].finalized && <span className="final-badge">✔ 수정 완료</span>}
                       </span>
                       <span className="meta">
                         {s.artist || '가수 미입력'}
@@ -75,7 +76,7 @@ export default function SongList({ songs, grouped = true }: { songs: SongWithShe
                         <Link key={sh.id} to={`/sheet/${sh.id}`} className="ver">
                           <span className={hasAudio ? 'dot' : 'dot off'} />
                           <span className="grow">
-                            <span className="nm">{sh.creator_name}</span>
+                            <span className="nm">{sh.creator_name}{sh.finalized && <span className="final-badge">✔ 수정 완료</span>}</span>
                             <span className="meta">{[sh.creator_info, `${st.lines}줄 · ${st.steps}스텝`, hasAudio ? '음원 있음' : '음원 없음'].filter(Boolean).join(' · ')}</span>
                           </span>
                           <Chevron />
