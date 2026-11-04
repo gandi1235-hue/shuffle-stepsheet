@@ -141,7 +141,7 @@ export async function saveSheet(input: SaveInput): Promise<Stepsheet> {
   if (!song) {
     const ins = await supabase.from('songs').insert({ folder_id: input.folderId, title, artist }).select('*').single()
     if (ins.error) throw ins.error
-    song = ins.data
+    song = ins.data as Song
   }
 
   const photo_paths: string[] = []
