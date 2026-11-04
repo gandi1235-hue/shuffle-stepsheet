@@ -7,7 +7,7 @@ import TopBar from '../components/TopBar'
 import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
 import { Copy, Doc, Edit, More, Photo, Print, Share } from '../components/Icons'
 import { copySheet, getFolder, getSheet, listFolders, moveSheet, signedUrl, updateMemo, updateSync } from '../lib/api'
-import type { Folder, Stepsheet } from '../lib/types'
+import { hasMarks, syncOf, withSync, type Folder, type Stepsheet } from '../lib/types'
 
 export default function SheetPage() {
   const { id = '' } = useParams()
@@ -26,7 +26,11 @@ export default function SheetPage() {
   const toast = useToast()
   const player = useRef<PlayerHandle | null>(null)
   const [t, setT] = useState(0)
-  const [source, setSource] = useState<'file' | 'youtube'>('file')
+  const [source, setSourceState] = useState<'file' | 'youtube'>(() => (localStorage.getItem(`src-${id}`) === 'youtube' ? 'youtube' : 'file'))
+  const setSource = (v: 'file' | 'youtube') => {
+    setSourceState(v)
+    localStorage.setItem(`src-${id}`, v)
+  }
 
   useEffect(() => {
     getSheet(id)
@@ -67,8 +71,8 @@ export default function SheetPage() {
   const fileIsVideo = Boolean(sheet.audio_path && isVideoSrc(sheet.audio_path))
 
   // 노래 동기화(저장된 줄별 시각): 재생 중인 줄 표시, 줄을 누르면 그 자리로 이동
-  const marks = (sheet.sync ?? []) as (number | null)[]
-  const hasSync = marks.some((v) => typeof v === 'number')
+  const marks = syncOf(sheet.sync, playingYt ? 'yt' : 'file')
+  const hasSync = hasMarks(marks)
   const activeIndex = (() => {
     if (!hasPlayer || !hasSync) return undefined
     let best: number | undefined
@@ -82,10 +86,11 @@ export default function SheetPage() {
     if (typeof v === 'number') player.current?.seek(v, true)
   }
   const clearSync = async () => {
-    if (!confirm('저장된 노래 동기화를 지울까요?')) return
+    if (!confirm(`${playingYt ? '유튜브' : '음원'}용 동기화를 지울까요?`)) return
     try {
-      await updateSync(sheet.id, null)
-      setSheet({ ...sheet, sync: null })
+      const next = withSync(sheet.sync, playingYt ? 'yt' : 'file', null)
+      await updateSync(sheet.id, next)
+      setSheet({ ...sheet, sync: next })
       toast('동기화를 지웠어요')
     } catch (e) {
       toast((e as Error).message)
@@ -134,12 +139,25 @@ export default function SheetPage() {
     }
   }
 
-  const syncBtn =
-    canEdit && hasPlayer ? (
-      <button type="button" className={hasSync ? 'btn sync on' : 'btn sync'} onClick={() => nav(`/sheet/${sheet.id}/sync`)}>
-        {hasSync ? '동기화 교정' : '노래 동기화'}
-      </button>
-    ) : undefined
+  const syncBtn = (
+    <>
+      {hasFile && ytId && (
+        <div className="srcseg" role="group" aria-label="재생할 것">
+          <button type="button" className={source === 'file' ? 'on' : ''} onClick={() => setSource('file')}>
+            음원
+          </button>
+          <button type="button" className={source === 'youtube' ? 'on' : ''} onClick={() => setSource('youtube')}>
+            유튜브
+          </button>
+        </div>
+      )}
+      {canEdit && hasPlayer && (
+        <button type="button" className={hasSync ? 'btn sync on' : 'btn sync'} onClick={() => nav(`/sheet/${sheet.id}/sync`)}>
+          {hasSync ? '동기화 교정' : '노래 동기화'}
+        </button>
+      )}
+    </>
+  )
 
   return (
     <div className="screen sheet-screen">
@@ -178,12 +196,6 @@ export default function SheetPage() {
           <span className="ico"><Share /></span>
           <span className="grow"><b>링크 공유</b><span>카카오톡 등으로 이 스텝지 링크를 보내요</span></span>
         </button>
-        {hasFile && ytId && (
-          <button type="button" className="menu-item" onClick={() => { setMenu(null); setSource(source === 'file' ? 'youtube' : 'file') }}>
-            <span className="ico"><Doc /></span>
-            <span className="grow"><b>{source === 'file' ? '유튜브 영상으로 보기' : '올린 파일로 듣기'}</b><span>음원 파일과 유튜브 링크가 둘 다 있어요</span></span>
-          </button>
-        )}
         <button type="button" className="menu-item" onClick={() => openFolders('copy')}>
           <span className="ico"><Copy /></span>
           <span className="grow"><b>다른 폴더로 복사</b><span>원본은 그대로 두고 복사본을 만들어요</span></span>

@@ -8,7 +8,7 @@ import { Skeleton, useToast } from '../components/ui'
 import { getFolder, getSheet, signedUrl, updateSync } from '../lib/api'
 import { haptic } from '../lib/prefs'
 import { detectTempo, snapToBeat, type Tempo } from '../lib/tempo'
-import { beatsOf, kindOf, type Folder, type Stepsheet } from '../lib/types'
+import { beatsOf, hasMarks, kindOf, syncOf, withSync, type Folder, type Stepsheet, type SyncSource } from '../lib/types'
 
 const fmtT = (x: number) => `${Math.floor(x / 60)}:${Math.floor(x % 60).toString().padStart(2, '0')}`
 const r1 = (x: number) => Math.round(x * 10) / 10
@@ -36,7 +36,7 @@ export default function SyncPage() {
   const [tempo, setTempo] = useState<Tempo | null>(null)
   const [analysis, setAnalysis] = useState<Analysis>('idle')
   const [phase, setPhase] = useState<'first' | 'fix'>('first')
-  const [source, setSource] = useState<'file' | 'youtube'>('file')
+  const [source, setSourceState] = useState<'file' | 'youtube'>(() => (localStorage.getItem(`src-${id}`) === 'youtube' ? 'youtube' : 'file'))
   const [saving, setSaving] = useState(false)
   const touched = useRef(false) // 사용자가 줄을 직접 고쳤는지 (분석이 늦게 끝나도 덮어쓰지 않으려고)
 
@@ -46,12 +46,8 @@ export default function SyncPage() {
         if (!s) return setErr('스텝지를 찾을 수 없어요')
         setSheet(s)
         getFolder(s.folder_id).then(setFolder)
-        const saved = (s.sync ?? []) as (number | null)[]
-        if (saved.some((v) => typeof v === 'number')) {
-          setMarks(s.lines.map((_, i) => saved[i] ?? null))
-          setPhase('fix')
-          touched.current = true
-        } else setMarks(s.lines.map(() => null))
+        const src: SyncSource = s.audio_path && (!s.audio_url || !youtubeId(s.audio_url) || localStorage.getItem(`src-${id}`) !== 'youtube') ? 'file' : 'yt'
+        loadMarks(s, src)
         if (s.audio_path) {
           const url = await signedUrl('audio', s.audio_path)
           setAudio(url)
@@ -64,6 +60,28 @@ export default function SyncPage() {
       .catch((e) => setErr(e.message))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  /** 음원용/유튜브용 저장된 시각을 불러와 시작 상태 만들기 */
+  const loadMarks = (s: Stepsheet, src: SyncSource) => {
+    const saved = syncOf(s.sync, src)
+    if (hasMarks(saved)) {
+      setMarks(s.lines.map((_, i) => saved[i] ?? null))
+      setPhase('fix')
+      touched.current = true
+    } else {
+      setMarks(s.lines.map(() => null))
+      setPhase('first')
+      touched.current = false
+    }
+    setHistory([])
+  }
+  const setSource = (v: 'file' | 'youtube') => {
+    if (!sheet) return
+    setSourceState(v)
+    localStorage.setItem(`src-${id}`, v)
+    loadMarks(sheet, v === 'youtube' ? 'yt' : 'file')
+    player.current?.pause()
+  }
 
   /** 음원에서 박자 자동 분석 (기기 안에서만 계산, 몇 초 걸림) */
   const analyze = async (url: string) => {
@@ -112,7 +130,7 @@ export default function SyncPage() {
   const playingYt = Boolean(ytId) && (!hasFile || source === 'youtube')
   const fileIsVideo = Boolean(sheet.audio_path && isVideoSrc(sheet.audio_path))
   const noPlayer = !hasFile && !ytId
-  const beatsOk = analysis === 'done'
+  const beatsOk = analysis === 'done' && !playingYt
 
   const now = () => player.current?.time() ?? 0
   const push = (m: (number | null)[]) => {
@@ -176,9 +194,9 @@ export default function SyncPage() {
   const save = async () => {
     setSaving(true)
     try {
-      await updateSync(sheet.id, marks)
+      await updateSync(sheet.id, withSync(sheet.sync, playingYt ? 'yt' : 'file', marks))
       haptic(20)
-      toast('동기화를 저장했어요. 재생하면 지금 줄이 표시돼요')
+      toast(`${playingYt ? '유튜브' : '음원'}용 동기화를 저장했어요. 재생하면 지금 줄이 표시돼요`)
       nav(`/sheet/${sheet.id}`, { replace: true })
     } catch (e) {
       toast((e as Error).message)
@@ -213,12 +231,30 @@ export default function SyncPage() {
       {!noPlayer && (
         <div className="sync-dock no-print">
           <div className="syncbar">
-            <div className={`sync-status ${analysis}`}>
-              {analysis === 'running' && '박자 분석 중… (몇 초 걸려요)'}
-              {analysis === 'done' && tempo && `박자 자동 인식: ${tempo.bpm} BPM`}
-              {analysis === 'weak' && tempo && `박자 ${tempo.bpm} BPM (확신 낮음 · 틀리면 2번 줄로 재세요)`}
-              {analysis === 'failed' && '박자를 못 찾았어요 · 2번 줄 시작도 눌러 주세요'}
-              {analysis === 'na' && '유튜브는 박자 자동 분석이 안 돼요 · 2번 줄 시작도 눌러 주세요'}
+            {hasFile && ytId && (
+              <div className="row">
+                <div className="srcseg" role="group" aria-label="무엇에 맞출지">
+                  <button type="button" className={source === 'file' ? 'on' : ''} onClick={() => setSource('file')}>
+                    음원에 맞추기
+                  </button>
+                  <button type="button" className={source === 'youtube' ? 'on' : ''} onClick={() => setSource('youtube')}>
+                    유튜브에 맞추기
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className={`sync-status ${playingYt ? 'na' : analysis}`}>
+              {playingYt ? (
+                tempo && analysis === 'done' ? `유튜브 · 음원에서 찾은 박자 ${tempo.bpm} BPM 사용 (다르면 2번 줄로 재세요)` : '유튜브는 박자 자동 분석이 안 돼요 · 2번 줄 시작도 눌러 주세요'
+              ) : (
+                <>
+                  {analysis === 'running' && '박자 분석 중… (몇 초 걸려요)'}
+                  {analysis === 'done' && tempo && `박자 자동 인식: ${tempo.bpm} BPM`}
+                  {analysis === 'weak' && tempo && `박자 ${tempo.bpm} BPM (확신 낮음 · 틀리면 2번 줄로 재세요)`}
+                  {analysis === 'failed' && '박자를 못 찾았어요 · 2번 줄 시작도 눌러 주세요'}
+                  {analysis === 'na' && '유튜브는 박자 자동 분석이 안 돼요 · 2번 줄 시작도 눌러 주세요'}
+                </>
+              )}
             </div>
             <div className="sync-hint">
               {phase === 'first' ? (
@@ -252,7 +288,7 @@ export default function SyncPage() {
                       +
                     </button>
                   </div>
-                  {!beatsOk && stepIdx.length > 1 && (
+                  {(!beatsOk || playingYt) && stepIdx.length > 1 && (
                     <button type="button" className="btn next" onClick={markSecond}>
                       2번 줄 시작
                     </button>
@@ -270,11 +306,6 @@ export default function SyncPage() {
                   </button>
                 </div>
               </>
-            )}
-            {hasFile && ytId && (
-              <button type="button" className="sync-switch" onClick={() => setSource(source === 'file' ? 'youtube' : 'file')}>
-                {source === 'file' ? '유튜브 영상으로 맞추기' : '올린 파일로 맞추기'}
-              </button>
             )}
           </div>
           {playingYt && ytId && <YouTubePlayer videoId={ytId} name={sheet.song?.title ?? ''} onTime={setT} handle={player} />}

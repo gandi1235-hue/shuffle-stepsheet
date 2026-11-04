@@ -69,7 +69,8 @@ export interface Stepsheet {
   lines: Line[]
   memo: string
   /** 노래 동기화: lines 순서대로 각 줄이 시작되는 시각(초). 안 찍은 줄은 null */
-  sync?: (number | null)[] | null
+  /** 노래 동기화: 줄별 시작 시각(초). 옛 데이터는 배열(음원용), 새 데이터는 { file, yt } */
+  sync?: SyncData
   audio_path: string | null
   audio_url: string | null
   photo_paths: string[]
@@ -157,4 +158,23 @@ export function sheetStats(lines: Line[]) {
 
 export function stepNames(lines: Line[]): string[] {
   return lines.flatMap((l) => [...l.steps.map((s) => s.name), l.label ?? '', ...(l.notes ?? []).map((n) => n.text)]).filter(Boolean)
+}
+
+// ── 노래 동기화 저장 모양 ──
+export type Marks = (number | null)[]
+export type SyncSource = 'file' | 'yt'
+export type SyncData = Marks | { file?: Marks | null; yt?: Marks | null } | null
+export const hasMarks = (m: Marks | null | undefined) => Boolean(m?.some((v) => typeof v === 'number'))
+/** 음원용/유튜브용 줄별 시각 꺼내기 (옛 배열 데이터는 음원용으로 봄) */
+export function syncOf(sync: SyncData | undefined, src: SyncSource): Marks {
+  if (!sync) return []
+  if (Array.isArray(sync)) return src === 'file' ? sync : []
+  return sync[src] ?? []
+}
+/** 한쪽만 바꿔 넣은 새 값 (둘 다 비면 null) */
+export function withSync(sync: SyncData | undefined, src: SyncSource, marks: Marks | null): SyncData {
+  const base: { file?: Marks | null; yt?: Marks | null } = !sync ? {} : Array.isArray(sync) ? { file: sync } : { ...sync }
+  base[src] = marks
+  if (!hasMarks(base.file) && !hasMarks(base.yt)) return null
+  return base
 }
