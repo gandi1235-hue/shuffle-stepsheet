@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import Avatar from '../components/Avatar'
+import { Sheet as Modal } from '../components/ui'
 import { FOLDER_INVITE_TEXT } from '../lib/share'
 import TopBar from '../components/TopBar'
 import { useToast } from '../components/ui'
@@ -13,6 +15,7 @@ export default function MembersPage() {
   const [folder, setFolder] = useState<Folder | null>(null)
   const [members, setMembers] = useState<Member[]>([])
   const [err, setErr] = useState('')
+  const [detail, setDetail] = useState<Member | null>(null)
   const toast = useToast()
 
   const load = () => listMembers(id).then(setMembers).catch((e) => setErr(e.message))
@@ -43,10 +46,10 @@ export default function MembersPage() {
   }
 
   const handOver = async (m: Member) => {
-    if (!confirm(`${m.display_name} 님을 이 폴더의 주인으로 바꿀까요?\n나는 편집자가 되고, 멤버 초대·내보내기는 새 주인만 할 수 있어요.`)) return
+    if (!confirm(`${m.name} 님을 이 폴더의 주인으로 바꿀까요?\n나는 편집자가 되고, 멤버 초대·내보내기는 새 주인만 할 수 있어요.`)) return
     try {
       await transferOwner(id, m.user_id)
-      toast(`${m.display_name} 님이 주인이 됐어요`)
+      toast(`${m.name} 님이 주인이 됐어요`)
       getFolder(id).then(setFolder)
       load()
     } catch (e) {
@@ -55,7 +58,7 @@ export default function MembersPage() {
   }
 
   const kick = async (m: Member) => {
-    if (!confirm(`${m.display_name} 님을 폴더에서 내보낼까요?`)) return
+    if (!confirm(`${m.name} 님을 폴더에서 내보낼까요?`)) return
     await removeMember(id, m.user_id)
     load()
   }
@@ -64,6 +67,9 @@ export default function MembersPage() {
     <div className="screen">
       <TopBar title="멤버" sub={`${folder?.name ?? ''} · ${members.length}명`} back={`/folder/${id}`} />
       <div className="content">
+        <Link to={`/folder/${id}/chat`} className="btn block">
+          💬 멤버 톡 열기
+        </Link>
         {isOwner && (
           <>
             <button type="button" className="btn primary block" onClick={invite}>
@@ -78,10 +84,13 @@ export default function MembersPage() {
         <div>
           {members.map((m) => (
             <div className="member" key={m.user_id}>
-              <span className="nm">
-                {m.display_name || '이름 없음'}
-                {m.user_id === session?.user.id && <span style={{ color: 'var(--faint)', fontSize: 14 }}> (나)</span>}
-              </span>
+              <button type="button" className="nm who" onClick={() => setDetail(m)} title="자세히">
+                <Avatar path={m.avatar_path} name={m.name} userId={m.user_id} size={40} />
+                <span>
+                  {m.name}
+                  {m.user_id === session?.user.id && <span style={{ color: 'var(--faint)', fontSize: 14 }}> (나)</span>}
+                </span>
+              </button>
               {isOwner && m.role !== 'owner' ? (
                 <>
                   <select aria-label="권한" value={m.role} onChange={(e) => change(m, e.target.value as Role)}>
@@ -103,9 +112,20 @@ export default function MembersPage() {
         </div>
 
         <div className="panel-desc" style={{ marginTop: 18 }}>
-          폴더 이름 바꾸기·폴더 없애기·나가기는 <Link to={`/folder/${id}/edit`}>폴더 편집</Link>에서 해요.
+          이름을 누르면 본명이 보여요. 내 닉네임·아바타는 <Link to="/settings">설정</Link>에서 바꿔요. 폴더 이름 바꾸기·없애기·나가기는 <Link to={`/folder/${id}/edit`}>폴더 편집</Link>에서 해요.
         </div>
       </div>
+
+      <Modal open={!!detail} title="멤버 정보" onClose={() => setDetail(null)}>
+        {detail && (
+          <div className="who-card">
+            <Avatar path={detail.avatar_path} name={detail.name} userId={detail.user_id} size={96} />
+            <div className="who-name">{detail.name}</div>
+            <div className="who-real">본명 {detail.display_name || '(없음)'}{detail.nickname.trim() ? '' : ' · 닉네임 없음'}</div>
+            <span className="chip accent">{detail.role === 'owner' ? '주인' : detail.role === 'editor' ? '편집자' : '보기만'}</span>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

@@ -232,20 +232,137 @@ export async function joinFolder(code: string): Promise<string> {
 export interface Member {
   user_id: string
   role: Role
+  /** 본명 (카카오 이름) */
   display_name: string
+  nickname: string
+  avatar_path: string | null
+  /** 화면에 보이는 이름: 닉네임이 있으면 닉네임, 없으면 본명 */
+  name: string
 }
+
+type ProfileRow = { display_name: string; nickname?: string | null; avatar_path?: string | null }
+const shownName = (p: ProfileRow | null | undefined) => (p?.nickname?.trim() || p?.display_name || '').trim()
 
 export async function listMembers(folderId: string): Promise<Member[]> {
   const { data, error } = await supabase
     .from('folder_members')
-    .select('user_id, role, profiles(display_name)')
+    .select('user_id, role, profiles(display_name, nickname, avatar_path)')
     .eq('folder_id', folderId)
   if (error) throw error
-  return (data ?? []).map((m) => ({
-    user_id: m.user_id,
-    role: m.role as Role,
-    display_name: (m.profiles as unknown as { display_name: string })?.display_name ?? '',
-  }))
+  return (data ?? []).map((m) => {
+    const p = m.profiles as unknown as ProfileRow | null
+    return {
+      user_id: m.user_id,
+      role: m.role as Role,
+      display_name: p?.display_name ?? '',
+      nickname: p?.nickname ?? '',
+      avatar_path: p?.avatar_path ?? null,
+      name: shownName(p) || '이름 없음',
+    }
+  })
+}
+
+/* ── 내 프로필: 닉네임·아바타 ── */
+export interface Profile {
+  id: string
+  display_name: string
+  nickname: string
+  avatar_path: string | null
+}
+
+export async function getProfile(): Promise<Profile | null> {
+  const uid = (await supabase.auth.getUser()).data.user?.id
+  if (!uid) return null
+  const { data, error } = await supabase.from('profiles').select('id, display_name, nickname, avatar_path').eq('id', uid).maybeSingle()
+  if (error) throw error
+  return data ? { id: data.id, display_name: data.display_name, nickname: data.nickname ?? '', avatar_path: data.avatar_path ?? null } : null
+}
+
+export async function updateProfile(patch: { nickname?: string; avatar_path?: string | null }) {
+  const uid = (await supabase.auth.getUser()).data.user?.id
+  if (!uid) throw new Error('로그인이 필요해요')
+  const { error } = await supabase.from('profiles').update(patch).eq('id', uid)
+  if (error) throw error
+}
+
+/** 아바타 공개 주소 (버킷이 공개라 서명 없이 바로 씀) */
+export function avatarUrl(path: string): string {
+  return supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl
+}
+
+/** 아바타 그림 올리기 → 경로. 파일 이름에 시각을 넣어 캐시가 안 남게 */
+export async function uploadAvatar(blob: Blob): Promise<string> {
+  const uid = (await supabase.auth.getUser()).data.user?.id
+  if (!uid) throw new Error('로그인이 필요해요')
+  const ext = blob.type === 'image/png' ? 'png' : 'jpg'
+  const path = `${uid}/avatar-${Date.now()}.${ext}`
+  const { error } = await supabase.storage.from('avatars').upload(path, blob, { contentType: blob.type || 'image/jpeg', upsert: true })
+  if (error) throw error
+  return path
+}
+
+/** 사진을 정사각형 작은 그림으로 (그대로 아바타로 쓸 때) */
+export async function squareThumb(file: File, size = 512): Promise<Blob> {
+  const bmp = await createImageBitmap(file)
+  const side = Math.min(bmp.width, bmp.height)
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  canvas.getContext('2d')!.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size)
+  return new Promise((res) => canvas.toBlob((b) => res(b ?? file), 'image/jpeg', 0.88))
+}
+
+/** 사진 → AI가 귀여운 캐릭터 아바타로 (서버 함수의 avatar 모드) */
+export async function makeAvatar(file: File): Promise<Blob> {
+  const blob = await shrink(file)
+  const data = await toBase64(blob)
+  const { data: r, error } = await supabase.functions.invoke('recognize', { body: { avatar: { media_type: blob.type || 'image/jpeg', data } } })
+  if (error) throw new Error('아바타를 만들지 못했어요. 잠시 후 다시 해 보세요.')
+  if (r?.error) throw new Error(r.error)
+  if (!r?.image) throw new Error('아바타를 만들지 못했어요')
+  const bin = atob(r.image as string)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new Blob([bytes], { type: (r.media_type as string) || 'image/png' })
+}
+
+/* ── 폴더 톡 ── */
+export interface Message {
+  id: string
+  folder_id: string
+  user_id: string
+  body: string
+  created_at: string
+}
+
+export async function listMessages(folderId: string, limit = 200): Promise<Message[]> {
+  const { data, error } = await supabase.from('messages').select('id, folder_id, user_id, body, created_at').eq('folder_id', folderId).order('created_at', { ascending: false }).limit(limit)
+  if (error) throw error
+  return (data ?? []).reverse() as Message[]
+}
+
+export async function sendMessage(folderId: string, body: string): Promise<Message> {
+  const uid = (await supabase.auth.getUser()).data.user?.id
+  if (!uid) throw new Error('로그인이 필요해요')
+  const { data, error } = await supabase.from('messages').insert({ folder_id: folderId, user_id: uid, body }).select('id, folder_id, user_id, body, created_at').single()
+  if (error) throw error
+  return data as Message
+}
+
+export async function deleteMessage(id: string) {
+  const { error } = await supabase.from('messages').delete().eq('id', id)
+  if (error) throw error
+}
+
+/** 새 메시지가 오면 cb. 돌려주는 함수를 부르면 구독 해제 */
+export function subscribeMessages(folderId: string, cb: (m: Message) => void): () => void {
+  const ch = supabase
+    .channel(`messages-${folderId}`)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `folder_id=eq.${folderId}` }, (payload) => cb(payload.new as Message))
+    .subscribe()
+  return () => {
+    supabase.removeChannel(ch)
+  }
 }
 
 export async function setMemberRole(folderId: string, userId: string, role: Role) {

@@ -9,6 +9,7 @@ import Home from './pages/Home'
 import Login from './pages/Login'
 import MembersPage from './pages/MembersPage'
 import FolderEditPage from './pages/FolderEditPage'
+import ChatPage from './pages/ChatPage'
 import SyncPage from './pages/SyncPage'
 import SettingsPage from './pages/SettingsPage'
 import SheetPage from './pages/SheetPage'
@@ -36,6 +37,7 @@ function Gate() {
       <Route path="/folder/:id" element={<FolderPage />} />
       <Route path="/folder/:id/members" element={<MembersPage />} />
       <Route path="/folder/:id/edit" element={<FolderEditPage />} />
+      <Route path="/folder/:id/chat" element={<ChatPage />} />
       <Route path="/sheet/:id" element={<SheetPage />} />
       <Route path="/sheet/:id/sync" element={<SyncPage />} />
       <Route path="/add" element={<AddPage />} />

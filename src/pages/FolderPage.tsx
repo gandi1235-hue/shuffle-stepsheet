@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import SongList from '../components/SongList'
 import TopBar from '../components/TopBar'
-import { Edit, People, Plus, Search } from '../components/Icons'
+import { Chat, Edit, People, Plus, Search } from '../components/Icons'
 import { getFolder, listSongs, type SongWithSheets } from '../lib/api'
 import { stepNames, type Folder } from '../lib/types'
 
@@ -41,9 +41,14 @@ export default function FolderPage() {
         right={
           <span className="row-btns">
             {folder?.kind === 'shared' && (
-              <Link to={`/folder/${id}/members`} className="btn pill" style={{ minHeight: 38 }}>
-                <People /> 멤버
-              </Link>
+              <>
+                <Link to={`/folder/${id}/chat`} className="btn pill" style={{ minHeight: 38 }}>
+                  <Chat /> 톡
+                </Link>
+                <Link to={`/folder/${id}/members`} className="btn pill" style={{ minHeight: 38 }}>
+                  <People /> 멤버
+                </Link>
+              </>
             )}
             <Link to={`/folder/${id}/edit`} className="btn pill" style={{ minHeight: 38 }}>
               <Edit /> 편집
