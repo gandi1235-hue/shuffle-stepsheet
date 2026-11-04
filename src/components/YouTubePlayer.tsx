@@ -55,7 +55,10 @@ function loadApi(): Promise<YT> {
   return apiPromise
 }
 
-const SPEEDS = [0.75, 1, 1.25]
+/** 속도: 음원 재생기와 같게 0.80 ~ 1.10, 0.05 단위 (유튜브 플레이어가 임의 속도를 받아 줌) */
+const MIN = 0.8
+const MAX = 1.1
+const STEP = 0.05
 
 /** 유튜브 영상을 앱 안에서 스텝지와 같이 보고, 동기화(현재 시각 읽기·이동)도 되게 */
 export default function YouTubePlayer({ videoId, name, onTime, handle, extra }: { videoId: string; name: string; onTime?: (t: number) => void; handle?: React.MutableRefObject<PlayerHandle | null>; extra?: React.ReactNode }) {
@@ -65,6 +68,10 @@ export default function YouTubePlayer({ videoId, name, onTime, handle, extra }: 
   const [t, setT] = useState(0)
   const [d, setD] = useState(0)
   const [speed, setSpeed] = useState(1)
+  /** 구간 반복: a~b (b가 null이면 끝 지점을 아직 안 찍음) */
+  const [loop, setLoop] = useState<{ a: number; b: number | null } | null>(null)
+  const loopRef = useRef(loop)
+  loopRef.current = loop
   const onTimeRef = useRef(onTime)
   onTimeRef.current = onTime
 
@@ -90,6 +97,8 @@ export default function YouTubePlayer({ videoId, name, onTime, handle, extra }: 
         const p = yt.current
         if (!p || typeof p.getCurrentTime !== 'function') return
         const now = p.getCurrentTime()
+        const lp = loopRef.current
+        if (lp && lp.b !== null && now >= lp.b) p.seekTo(lp.a, true)
         setT(now)
         onTimeRef.current?.(now)
         if (!d) setD(p.getDuration())
@@ -120,25 +129,43 @@ export default function YouTubePlayer({ videoId, name, onTime, handle, extra }: 
     }
   }, [handle])
 
-  const cycleSpeed = () => {
-    const s = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]
+  const bump = (dir: 1 | -1) => {
+    const s = Math.min(MAX, Math.max(MIN, Math.round((speed + dir * STEP) * 100) / 100))
     setSpeed(s)
     yt.current?.setPlaybackRate(s)
   }
+  const loopBtn = () => {
+    const p = yt.current
+    if (!p) return
+    const now = p.getCurrentTime()
+    if (!loop) setLoop({ a: now, b: null })
+    else if (loop.b === null) setLoop({ a: loop.a, b: Math.max(now, loop.a + 1) })
+    else setLoop(null)
+  }
+  const loopLabel = !loop ? '구간 반복' : loop.b === null ? '끝 지점 찍기' : '반복 해제'
 
   return (
     <div className="player has-video yt">
       <div className="yt-box" ref={box} title={name} />
       {/* 재생·탐색은 유튜브 자체 조작으로. 여기엔 속도와 부가 버튼만 한 줄로 */}
       <div className="tools">
-        <button type="button" className="btn" onClick={cycleSpeed} disabled={!ready}>
-          속도 {speed}×
+        <div className="speed" role="group" aria-label="재생 속도">
+          <button type="button" className="btn" aria-label="느리게" onClick={() => bump(-1)} disabled={!ready || speed <= MIN + 1e-6}>
+            −
+          </button>
+          <span>{speed.toFixed(2)}×</span>
+          <button type="button" className="btn" aria-label="빠르게" onClick={() => bump(1)} disabled={!ready || speed >= MAX - 1e-6}>
+            +
+          </button>
+        </div>
+        <button type="button" className={loop ? 'btn loop on' : 'btn loop'} onClick={loopBtn} disabled={!ready}>
+          {loopLabel}
         </button>
         <span className="yt-time" aria-live="off">
           {fmt(t)} / {fmt(d)}
         </span>
-        {extra}
       </div>
+      {extra && <div className="tools extra">{extra}</div>}
     </div>
   )
 }
