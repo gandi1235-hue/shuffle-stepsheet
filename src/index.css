@@ -531,7 +531,9 @@ textarea.ask { width: 100%; box-sizing: border-box; border: 1.5px solid var(--li
 /* ── 아바타 · 멤버 정보 · 폴더 톡 ── */
 .avatar { border-radius: 50%; object-fit: cover; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; background: var(--soft); }
 .avatar.initial { letter-spacing: 0; }
-.member .nm.who { display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.member .nm.who { flex: 1 1 100%; min-width: 0; display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.member .nm.who > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member > .chip { margin-left: auto; }
 .who-card { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 0 16px; }
 .who-name { font-size: 20px; font-weight: 800; }
 .who-real { font-size: 15px; color: var(--muted); }
