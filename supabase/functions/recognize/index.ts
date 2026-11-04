@@ -737,21 +737,22 @@ let geminiVideoCache: { key: string; deep: boolean; models: string[] } | null = 
 async function geminiVideoModels(key: string, deep = false): Promise<string[]> {
   if (geminiVideoCache?.key === key && geminiVideoCache.deep === deep) return geminiVideoCache.models;
   // 기본은 flash 먼저(무료 키도 됨, 빠름). 고급 추론을 켰을 때만 pro 먼저 (무료 키는 pro 한도가 0이라 바로 다음 모델로 넘어감)
-  const flash = ["gemini-3.8-flash", "gemini-3.1-flash", "gemini-3-flash-preview", "gemini-2.5-flash"];
-  const pro = ["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-2.5-pro"];
+  // 2.5 계열은 새 키로는 못 씀(404 "no longer available to new users")이라 뺌
+  const flash = ["gemini-3.8-flash", "gemini-3.1-flash", "gemini-3-flash-preview"];
+  const pro = ["gemini-3.1-pro-preview", "gemini-3-pro-preview"];
   const prefer = deep ? [...pro, ...flash] : [...flash, ...pro];
   let avail: string[] = [];
   try {
     const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": key } });
     const j = await res.json();
     avail = ((j.models ?? []) as { name: string; supportedGenerationMethods?: string[] }[])
-      .filter((m) => (m.supportedGenerationMethods ?? []).includes("generateContent") && /gemini-(2\.5|3)/.test(m.name) && !/image|tts|live|audio|embedding|robotics|computer/i.test(m.name))
+      .filter((m) => (m.supportedGenerationMethods ?? []).includes("generateContent") && /gemini-3/.test(m.name) && !/image|tts|live|audio|embedding|robotics|computer/i.test(m.name))
       .map((m) => m.name.replace(/^models\//, ""));
   } catch (e) {
     console.error(`[gemini] models list failed: ${(e as Error).message}`);
   }
   const ordered = [...prefer.filter((p) => avail.includes(p)), ...avail.filter((a) => !prefer.includes(a) && /pro|flash/.test(a) && !/lite|8b/.test(a))];
-  if (!ordered.length) ordered.push("gemini-2.5-pro", "gemini-2.5-flash");
+  if (!ordered.length) ordered.push("gemini-3.8-flash", "gemini-3-flash-preview");
   const forced = Deno.env.get("GEMINI_VIDEO_MODEL")?.trim();
   const models = forced ? [forced, ...ordered.filter((m) => m !== forced)] : ordered;
   console.log(`[gemini] video models: ${models.slice(0, 4).join(", ")}`);
@@ -781,18 +782,30 @@ async function viaGeminiMedia(mediaPart: Record<string, unknown>, keyList: strin
 async function viaGeminiMediaOne(mediaPart: Record<string, unknown>, key: string, ask: string, sys: string, deep: boolean, what: "video" | "audio"): Promise<string> {
   const models = await geminiVideoModels(key, deep);
   let lastMsg = "";
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   for (const model of models.slice(0, 5)) {
     for (const withThink of [true, false]) {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: sys }] },
-          contents: [{ role: "user", parts: [mediaPart, { text: ask }] }],
-          generationConfig: { responseMimeType: "application/json", temperature: 0, ...(withThink ? { thinkingConfig: { thinkingBudget: deep ? 16384 : 2048 } } : {}) },
-        }),
-      });
-      const j = await res.json().catch(() => ({}));
+      let res: Response;
+      let j: Record<string, any> = {};
+      // 503(수요 많음)·분당 한도는 잠깐 쉬었다가 같은 모델로 다시 (하루 한도 초과는 재시도 안 함)
+      for (let attempt = 0; ; attempt++) {
+        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: sys }] },
+            contents: [{ role: "user", parts: [mediaPart, { text: ask }] }],
+            generationConfig: { responseMimeType: "application/json", temperature: 0, ...(withThink ? { thinkingConfig: { thinkingBudget: deep ? 16384 : 8192 } } : {}) },
+          }),
+        });
+        j = await res.json().catch(() => ({}));
+        const raw0 = String(j?.error?.message ?? "");
+        const transient = res.status === 503 || res.status === 500 || (res.status === 429 && /per.?minute|PerMinute/i.test(raw0) && !/per.?day|PerDay|free_tier/i.test(raw0));
+        if (!transient || attempt >= 2) break;
+        const wait = attempt === 0 ? 6000 : 15000;
+        console.error(`[gemini] ${what} ${model}: ${res.status} 잠시 뒤 재시도 (${wait / 1000}s) — ${raw0.slice(0, 80)}`);
+        await sleep(wait);
+      }
       if (!res.ok) {
         const raw = String(j?.error?.message ?? `HTTP ${res.status}`);
         console.error(`[gemini] ${what} ${model}${withThink ? "" : " (no thinking)"}: ${res.status} ${raw.slice(0, 300)}`);
