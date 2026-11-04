@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import TopBar from '../components/TopBar'
-import { useToast } from '../components/ui'
+import { Sheet as Modal, useToast } from '../components/ui'
 import { haptic } from '../lib/prefs'
-import { Camera, Photo } from '../components/Icons'
-import { deleteSheet, findDuplicate, getSheet, guessArtist, listFolders, recognize, saveSheet } from '../lib/api'
+import { Camera, Chevron, Folder as FolderIcon, Music, Photo } from '../components/Icons'
+import { copySheet, deleteSheet, findDuplicate, getSheet, guessArtist, listFolders, listSongs, recognize, saveSheet, type SongWithSheets } from '../lib/api'
 import { LINE_KINDS, NOTE_TYPES, emptyLine, emptyRecognized, eventsOf, kindOf, lineToText, parseLineText, type Folder, type Line, type LineKind, type NoteType, type Recognized } from '../lib/types'
 
 type Stage = 'photo' | 'recognizing' | 'edit' | 'saving'
@@ -27,12 +27,45 @@ export default function AddPage() {
   const [hasSync, setHasSync] = useState(false)
   const [err, setErr] = useState('')
   const camRef = useRef<HTMLInputElement>(null)
+  // ── 다른 폴더에서 불러오기(복사) ──
+  const [allFolders, setAllFolders] = useState<Folder[]>([])
+  const [importOpen, setImportOpen] = useState(false)
+  const [srcFolder, setSrcFolder] = useState('')
+  const [srcSongs, setSrcSongs] = useState<SongWithSheets[] | null>(null)
+  const [importing, setImporting] = useState('')
+  const openImport = () => {
+    setImportOpen(true)
+    const first = allFolders.find((f) => f.id !== folderId)
+    if (!srcFolder && first) setSrcFolder(first.id)
+  }
+  useEffect(() => {
+    if (!importOpen || !srcFolder) return
+    setSrcSongs(null)
+    listSongs(srcFolder)
+      .then(setSrcSongs)
+      .catch(() => setSrcSongs([]))
+  }, [importOpen, srcFolder])
+  const importSheet = async (sheetId: string, title: string) => {
+    if (!folderId) return toast('저장할 폴더를 골라 주세요')
+    setImporting(sheetId)
+    try {
+      const saved = await copySheet(sheetId, folderId)
+      haptic(20)
+      toast(`"${title}" 스텝지를 불러왔어요`)
+      nav(`/sheet/${saved.id}`, { replace: true })
+    } catch (e) {
+      toast((e as Error).message)
+    } finally {
+      setImporting('')
+    }
+  }
   const fileRef = useRef<HTMLInputElement>(null)
   const toast = useToast()
   const hasAudio = hasAudioPath || Boolean(audioFile) || Boolean(audioUrl.trim())
 
   useEffect(() => {
     listFolders().then((fs) => {
+      setAllFolders(fs)
       const editable = fs.filter((f) => f.role === 'owner' || f.role === 'editor')
       setFolders(editable)
       // 편집 중엔 원래 폴더를 그대로 둔다 (예전엔 여기서 첫 폴더로 바뀌어 스텝지가 개인 폴더로 옮겨지는 버그가 있었음)
@@ -192,6 +225,11 @@ export default function AddPage() {
               <button type="button" className="btn big" onClick={() => fileRef.current?.click()}>
                 <Photo /> 앨범에서 고르기
               </button>
+              {allFolders.length > 1 && (
+                <button type="button" className="btn big" onClick={openImport}>
+                  <FolderIcon /> 다른 폴더에서 불러오기
+                </button>
+              )}
             </div>
             <input ref={camRef} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => pick(e.target.files)} />
             <input ref={fileRef} type="file" accept="image/*" multiple className="sr-only" onChange={(e) => pick(e.target.files)} />
@@ -205,6 +243,53 @@ export default function AddPage() {
           )}
           {err && <div className="error">{err}</div>}
         </div>
+
+        <Modal open={importOpen} title="다른 폴더에서 불러오기" onClose={() => setImportOpen(false)}>
+          <div className="panel-desc">다른 폴더에 있는 스텝지를 골라 지금 폴더로 복사해요. 글·음원·사진이 그대로 들어오고, 원본은 그 폴더에 남아요.</div>
+          <div className="field">
+            <label htmlFor="imp-to">넣을 폴더</label>
+            <select id="imp-to" value={folderId} onChange={(e) => setFolderId(e.target.value)}>
+              {folders.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="imp-from">가져올 폴더</label>
+            <select id="imp-from" value={srcFolder} onChange={(e) => setSrcFolder(e.target.value)}>
+              {allFolders
+                .filter((f) => f.id !== folderId)
+                .map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                    {f.song_count ? ` · ${f.song_count}곡` : ''}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div className="list" style={{ marginTop: 10 }}>
+            {srcSongs === null && <div className="panel-desc">불러오는 중…</div>}
+            {srcSongs && srcSongs.every((sg) => !sg.sheets.length) && <div className="panel-desc">이 폴더엔 스텝지가 없어요.</div>}
+            {srcSongs?.flatMap((sg) =>
+              sg.sheets.map((sh) => (
+                <button key={sh.id} type="button" className="card" onClick={() => importSheet(sh.id, sg.title)} disabled={!!importing}>
+                  <span className={sh.audio_path || sh.audio_url ? 'ico' : 'ico soft'}>
+                    <Music />
+                  </span>
+                  <span className="grow">
+                    <span className="t">{sg.title}</span>
+                    <span className="s">
+                      {sg.artist ? `${sg.artist} · ` : ''}창작 {sh.creator_name}
+                    </span>
+                  </span>
+                  {importing === sh.id ? <span className="chip">복사 중…</span> : <Chevron />}
+                </button>
+              )),
+            )}
+          </div>
+        </Modal>
         <div className="bottom">
           <button type="button" className="btn primary block" disabled={files.length === 0 || stage === 'recognizing'} onClick={run}>
             {stage === 'recognizing' ? '읽는 중… 잠시만요' : '다음: 사진 읽기'}
