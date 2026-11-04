@@ -342,8 +342,8 @@ button.card { width: 100%; font: inherit; text-align: left; cursor: pointer; }
 /* 영상과 같이 볼 때: 영상은 맨 위에 작게(높이만 맞추고 폭은 자유), 그 아래를 줄이 꽉 채움. 줄은 원래 크기로 스크롤 + 지금 줄 따라가기 */
 .sheet-screen.with-video > .player { order: 1; position: static; margin: 0; padding: 8px 12px 8px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: 0 8px 20px -16px rgba(0,0,0,0.35); gap: 8px; }
 .sheet-screen.with-video > .content, .sheet-screen.with-video > .docview { order: 2; }
-.sheet-screen.with-video .player .yt-box { width: min(100%, calc(32vh * 16 / 9)); max-height: 32vh; margin: 0 auto; border-radius: 10px; overflow: hidden; }
-.sheet-screen.with-video .player .screen-video { width: auto; max-width: 100%; max-height: 32vh; margin: 0 auto; border-radius: 10px; }
+.sheet-screen.with-video .player .yt-box { width: min(100%, calc(44vh * 16 / 9)); max-height: 44vh; margin: 0 auto; border-radius: 10px; overflow: hidden; }
+.sheet-screen.with-video .player .screen-video { width: auto; max-width: 100%; max-height: 44vh; margin: 0 auto; border-radius: 10px; }
 .content.follow { padding: 8px 12px 40vh; gap: 10px; }
 .content.follow .form-body .main { font-size: 18px; }
 .content.follow .form-body .line.now { background: #f9d9e4; }
