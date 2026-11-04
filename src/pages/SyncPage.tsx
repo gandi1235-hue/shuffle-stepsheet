@@ -245,14 +245,14 @@ export default function SyncPage() {
             )}
             <div className={`sync-status ${playingYt ? 'na' : analysis}`}>
               {playingYt ? (
-                tempo && analysis === 'done' ? `유튜브 · 음원에서 찾은 박자 ${tempo.bpm} BPM 사용 (다르면 2번 줄로 재세요)` : '유튜브는 박자 자동 분석이 안 돼요 · 2번 줄 시작도 눌러 주세요'
+                tempo && analysis === 'done' ? `유튜브 · 음원에서 찾은 박자 ${tempo.bpm} BPM으로 자동 채워요` : `유튜브 · ${Math.round(bpm * 10) / 10} BPM 기준으로 자동 채워요 (틀리면 2번 줄 시작으로 박자 재기)`
               ) : (
                 <>
                   {analysis === 'running' && '박자 분석 중… (몇 초 걸려요)'}
                   {analysis === 'done' && tempo && `박자 자동 인식: ${tempo.bpm} BPM`}
                   {analysis === 'weak' && tempo && `박자 ${tempo.bpm} BPM (확신 낮음 · 틀리면 2번 줄로 재세요)`}
-                  {analysis === 'failed' && '박자를 못 찾았어요 · 2번 줄 시작도 눌러 주세요'}
-                  {analysis === 'na' && '유튜브는 박자 자동 분석이 안 돼요 · 2번 줄 시작도 눌러 주세요'}
+                  {analysis === 'failed' && `박자를 못 찾았어요 · ${Math.round(bpm * 10) / 10} BPM 기준으로 채워요 (틀리면 2번 줄 시작으로 박자 재기)`}
+                  {analysis === 'na' && `${Math.round(bpm * 10) / 10} BPM 기준으로 자동 채워요 (틀리면 2번 줄 시작으로 박자 재기)`}
                 </>
               )}
             </div>
@@ -289,8 +289,9 @@ export default function SyncPage() {
                     </button>
                   </div>
                   {(!beatsOk || playingYt) && stepIdx.length > 1 && (
-                    <button type="button" className="btn next" onClick={markSecond}>
-                      2번 줄 시작
+                    <button type="button" className="btn" onClick={markSecond} title="박자가 틀릴 때만: 2번 줄이 시작되는 순간 누르면 박자를 다시 재요">
+                      2번 줄 시작<br />
+                      <small>박자 재기</small>
                     </button>
                   )}
                   <button type="button" className="btn" onClick={undo} disabled={!history.length}>
