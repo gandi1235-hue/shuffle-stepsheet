@@ -2,6 +2,8 @@ import TopBar from '../components/TopBar'
 import { useAuth } from '../lib/auth'
 import { usePrefs, type FontSize } from '../lib/prefs'
 import { supabase } from '../lib/supabase'
+import { shareApp } from '../lib/share'
+import { useToast } from '../components/ui'
 
 const SIZES: [FontSize, string, string][] = [
   ['normal', '보통', '가'],
@@ -13,6 +15,11 @@ export default function SettingsPage() {
   const [prefs, update] = usePrefs()
   const { session } = useAuth()
   const standalone = window.matchMedia('(display-mode: standalone)').matches
+  const toast = useToast()
+  const sendApp = async () => {
+    const r = await shareApp()
+    if (r === 'copied') toast('앱 소개 글을 복사했어요. 카카오톡에 붙여 넣으세요.')
+  }
 
   return (
     <div className="screen">
@@ -49,6 +56,15 @@ export default function SettingsPage() {
               ? '지금 홈 화면 앱으로 열려 있어요.'
               : '브라우저 메뉴(⋮ 또는 공유) → "홈 화면에 추가"를 누르면 주소창 없이 전체 화면으로 열려요.'}
           </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-title">친구에게 앱 보내기</div>
+          <div className="panel-desc">카카오톡으로 앱 링크를 보내요. 받은 사람이 링크를 열고 카카오로 로그인하면 바로 쓸 수 있고, 새 기능이 나오면 모두의 앱에 자동으로 반영돼요.</div>
+          <button type="button" className="btn block" onClick={sendApp}>
+            카카오톡으로 앱 보내기
+          </button>
+          <div className="panel-desc">앱 버전 {__APP_VERSION__}</div>
         </section>
 
         <section className="panel">

@@ -5,7 +5,7 @@ import { useToast } from '../components/ui'
 import { haptic } from '../lib/prefs'
 import { Camera, Photo } from '../components/Icons'
 import { deleteSheet, findDuplicate, getSheet, guessArtist, listFolders, recognize, saveSheet } from '../lib/api'
-import { emptyLine, emptyRecognized, emptyStep, type Folder, type Line, type Recognized } from '../lib/types'
+import { LINE_KINDS, NOTE_TYPES, emptyLine, emptyRecognized, kindOf, lineToText, parseLineText, type Folder, type Line, type LineKind, type NoteType, type Recognized } from '../lib/types'
 
 type Stage = 'photo' | 'recognizing' | 'edit' | 'saving'
 
@@ -19,6 +19,8 @@ export default function AddPage() {
   const [files, setFiles] = useState<File[]>([])
   const [previews, setPreviews] = useState<string[]>([])
   const [data, setData] = useState<Recognized>(emptyRecognized())
+  /** 스텝 줄의 입력 글(타이핑 중 모양 유지용). 줄 index → 글 */
+  const [texts, setTexts] = useState<Record<number, string>>({})
   const [audioFile, setAudioFile] = useState<File | null>(null)
   const [audioUrl, setAudioUrl] = useState('')
   const [err, setErr] = useState('')
@@ -43,8 +45,9 @@ export default function AddPage() {
           creator_name: s.creator_name,
           creator_info: s.creator_info ?? '',
           memo: s.memo,
-          lines: s.lines.map((l) => ({ steps: [l.steps[0] ?? emptyStep(), l.steps[1] ?? emptyStep()] })),
+          lines: s.lines.length ? s.lines : [emptyLine()],
         })
+        setTexts({})
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId])
@@ -61,8 +64,8 @@ export default function AddPage() {
     setStage('recognizing')
     try {
       const r = await recognize(files)
-      const lines = (r.lines ?? []).map((l) => ({ steps: [l.steps[0] ?? emptyStep(), l.steps[1] ?? emptyStep()] }))
-      setData({ ...emptyRecognized(), ...r, lines: lines.length ? lines : emptyRecognized().lines })
+      setData({ ...emptyRecognized(), ...r, lines: r.lines.length ? r.lines : emptyRecognized().lines })
+      setTexts({})
       setStage('edit')
     } catch (e) {
       setErr(`사진을 읽지 못했어요: ${(e as Error).message}`)
@@ -77,8 +80,8 @@ export default function AddPage() {
 
   const save = async () => {
     setErr('')
-    if (!data.title.trim()) return setErr('안무곡(노래 제목)은 꼭 적어 주세요.')
-    if (!data.creator_name.trim()) return setErr('응시자(창작자 이름)는 꼭 적어 주세요.')
+    if (!data.title.trim()) return setErr('노래 제목은 꼭 적어 주세요.')
+    if (!data.creator_name.trim()) return setErr('창작자 이름은 꼭 적어 주세요.')
     if (!folderId) return setErr('저장할 폴더를 골라 주세요.')
     const unsure = data.lines.reduce((n, l) => n + l.steps.filter((s) => s.uncertain && s.name.trim()).length, 0)
     if (unsure > 0 && !confirm(`노란 칸(확실하지 않은 글자)이 ${unsure}개 남아 있어요.\n확인: 그대로 저장 (노란 표시는 남아요) / 취소: 돌아가서 고치기`)) return
@@ -105,8 +108,15 @@ export default function AddPage() {
         ...data,
         artist,
         lines: data.lines
-          .map((l) => ({ steps: l.steps.filter((s) => s.name.trim()).map((s) => ({ name: s.name.trim(), beats: s.beats.trim(), ...(s.uncertain ? { uncertain: true } : {}) })) }))
-          .filter((l) => l.steps.length),
+          .map((l) => {
+            const kind = kindOf(l)
+            const notes = (l.notes ?? []).map((n) => ({ ...n, text: n.text.trim() })).filter((n) => n.text)
+            const out: Line = { kind, steps: kind === 'steps' ? l.steps.filter((s) => s.name.trim()) : [] }
+            if (kind !== 'steps') out.label = (l.label ?? '').trim()
+            if (notes.length) out.notes = notes
+            return out
+          })
+          .filter((l) => l.steps.length || (l.label ?? '').trim() || l.notes?.length),
       }
       const saved = await saveSheet({ ...cleaned, folderId, audioFile, audioUrl: audioUrl.trim(), photoFiles: files, overwriteId })
       haptic(20)
@@ -118,9 +128,43 @@ export default function AddPage() {
     }
   }
 
-  const setLine = (i: number, line: Line) => setData({ ...data, lines: data.lines.map((l, k) => (k === i ? line : l)) })
-  const setStep = (i: number, j: number, patch: { name?: string; beats?: string }) =>
-    setLine(i, { steps: data.lines[i].steps.map((s, k) => (k === j ? { ...s, ...patch, uncertain: false } : s)) })
+  const setLine = (i: number, line: Line) => setData((d) => ({ ...d, lines: d.lines.map((l, k) => (k === i ? line : l)) }))
+  const lineText = (i: number, l: Line) => texts[i] ?? lineToText(l)
+  /** 스텝 줄 글을 고치면 " / "로 나눠 스텝으로 (노란 표시는 사라짐) */
+  const setText = (i: number, t: string) => {
+    setTexts((x) => ({ ...x, [i]: t }))
+    setLine(i, { ...data.lines[i], steps: parseLineText(t) })
+  }
+  const shiftTexts = (from: number, delta: number, drop?: number) =>
+    setTexts((x) => {
+      const o: Record<number, string> = {}
+      for (const [k, v] of Object.entries(x)) {
+        const n = Number(k)
+        if (n === drop) continue
+        o[n >= from ? n + delta : n] = v
+      }
+      return o
+    })
+  const removeLine = (i: number) => {
+    setData((d) => ({ ...d, lines: d.lines.filter((_, k) => k !== i) }))
+    shiftTexts(i + 1, -1, i)
+  }
+  const insertAfter = (i: number, kind: LineKind = 'steps') => {
+    setData((d) => ({ ...d, lines: [...d.lines.slice(0, i + 1), emptyLine(kind), ...d.lines.slice(i + 1)] }))
+    shiftTexts(i + 1, 1)
+  }
+  const addLine = (kind: LineKind) => setData((d) => ({ ...d, lines: [...d.lines, emptyLine(kind)] }))
+  const cycleKind = (i: number) => {
+    const l = data.lines[i]
+    const idx = LINE_KINDS.findIndex((k) => k.v === kindOf(l))
+    const next = LINE_KINDS[(idx + 1) % LINE_KINDS.length].v
+    const label = next === 'steps' ? undefined : (l.label ?? '') || lineText(i, l)
+    setLine(i, { ...l, kind: next, label, steps: next === 'steps' ? (l.steps.length ? l.steps : parseLineText(l.label ?? '')) : l.steps })
+  }
+  const addNote = (i: number, type: NoteType = 'explanation') => setLine(i, { ...data.lines[i], notes: [...(data.lines[i].notes ?? []), { text: '', type }] })
+  const setNote = (i: number, j: number, patch: { text?: string; type?: NoteType }) =>
+    setLine(i, { ...data.lines[i], notes: (data.lines[i].notes ?? []).map((n, k) => (k === j ? { ...n, ...patch } : n)) })
+  const removeNote = (i: number, j: number) => setLine(i, { ...data.lines[i], notes: (data.lines[i].notes ?? []).filter((_, k) => k !== j) })
 
   if (stage === 'photo' || stage === 'recognizing')
     return (
@@ -166,8 +210,6 @@ export default function AddPage() {
       </div>
     )
 
-  const unc = (b?: boolean) => (b ? 'uncertain-input' : '')
-
   return (
     <div className="screen">
       <TopBar title={editId ? '스텝지 수정' : '인식 결과 확인'} sub={editId ? undefined : '2 / 3 · 틀린 칸 고치기'} back />
@@ -194,12 +236,12 @@ export default function AddPage() {
         )}
 
         <div className="form-head">
-          <div className="k">응시자 *</div>
+          <div className="k">창작자 *</div>
           <div className="v pad v2">
-            <input aria-label="응시자 이름" placeholder="이름" value={data.creator_name} onChange={(e) => setData({ ...data, creator_name: e.target.value })} />
-            <input aria-label="기수/지부" placeholder="기수/지부 (선택)" value={data.creator_info} onChange={(e) => setData({ ...data, creator_info: e.target.value })} />
+            <input aria-label="창작자 이름" placeholder="이름" value={data.creator_name} onChange={(e) => setData({ ...data, creator_name: e.target.value })} />
+            <input aria-label="기수/지부" placeholder="DC·인스타·기수 (선택)" value={data.creator_info} onChange={(e) => setData({ ...data, creator_info: e.target.value })} />
           </div>
-          <div className="k">안무곡 *</div>
+          <div className="k">제목 *</div>
           <div className="v pad v2">
             <input
               aria-label="노래 제목"
@@ -218,36 +260,76 @@ export default function AddPage() {
 
         <div className="editbox">
           <div className="edithead">
-            <div>줄</div>
-            <div>스텝 1</div>
-            <div>박</div>
-            <div>스텝 2</div>
-            <div>박</div>
-            <div></div>
+            <span>번호를 누르면 줄 종류가 바뀌어요 (스텝 → 구간 → 반복 → 쉬기 → 글)</span>
           </div>
-          {data.lines.map((l, i) => (
-            <div className="editline" key={i}>
-              <div className="no">{i + 1}</div>
-              <input aria-label={`${i + 1}줄 스텝 1`} className={unc(l.steps[0]?.uncertain)} value={l.steps[0]?.name ?? ''} placeholder={i === 0 ? '전주 - …' : '스텝'} onChange={(e) => setStep(i, 0, { name: e.target.value })} />
-              <input aria-label={`${i + 1}줄 스텝 1 박수`} className={unc(l.steps[0]?.uncertain)} value={l.steps[0]?.beats ?? ''} placeholder="4박" onChange={(e) => setStep(i, 0, { beats: e.target.value })} />
-              <input aria-label={`${i + 1}줄 스텝 2`} className={unc(l.steps[1]?.uncertain)} value={l.steps[1]?.name ?? ''} placeholder="스텝 (선택)" onChange={(e) => setStep(i, 1, { name: e.target.value })} />
-              <input aria-label={`${i + 1}줄 스텝 2 박수`} className={unc(l.steps[1]?.uncertain)} value={l.steps[1]?.beats ?? ''} placeholder="4박" onChange={(e) => setStep(i, 1, { beats: e.target.value })} />
-              <button type="button" className="x" aria-label="줄 삭제" onClick={() => setData({ ...data, lines: data.lines.filter((_, k) => k !== i) })}>
-                ×
-              </button>
-            </div>
-          ))}
+          {(() => {
+            let n = 0
+            return data.lines.map((l, i) => {
+              const kind = kindOf(l)
+              if (kind === 'section') n = 0
+              const no = kind === 'steps' ? String(++n) : LINE_KINDS.find((k) => k.v === kind)?.label
+              const hint = LINE_KINDS.find((k) => k.v === kind)?.hint
+              const unsure = l.steps.some((s) => s.uncertain)
+              return (
+                <div className={`editline k-${kind}`} key={i}>
+                  <button type="button" className="kind" title="줄 종류 바꾸기" onClick={() => cycleKind(i)}>
+                    {no}
+                  </button>
+                  {kind === 'steps' ? (
+                    <input aria-label={`${i + 1}줄 스텝`} className={unsure ? 'uncertain-input' : ''} value={lineText(i, l)} placeholder={i === 0 ? '예) 전주 - 바운스 8' : hint} onChange={(e) => setText(i, e.target.value)} />
+                  ) : (
+                    <input aria-label={`${i + 1}줄 ${no}`} value={l.label ?? ''} placeholder={hint} onChange={(e) => setLine(i, { ...l, label: e.target.value })} />
+                  )}
+                  <button type="button" className="x" aria-label="줄 삭제" onClick={() => removeLine(i)}>
+                    ×
+                  </button>
+                  {(l.notes ?? []).map((nt, j) => (
+                    <div className="editnote" key={j}>
+                      <select aria-label="해설 종류" value={nt.type ?? 'explanation'} onChange={(e) => setNote(i, j, { type: e.target.value as NoteType })}>
+                        {NOTE_TYPES.map((t) => (
+                          <option key={t.v} value={t.v}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </select>
+                      <input aria-label="해설 내용" value={nt.text} placeholder="예) 양손 빠이빠이, 날아갈 듯이" onChange={(e) => setNote(i, j, { text: e.target.value })} />
+                      <button type="button" className="x" aria-label="해설 삭제" onClick={() => removeNote(i, j)}>
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <div className="editrow">
+                    <button type="button" className="mini note" onClick={() => addNote(i)}>
+                      + 파란 해설
+                    </button>
+                    <button type="button" className="mini" onClick={() => insertAfter(i)}>
+                      + 아래에 줄
+                    </button>
+                  </div>
+                </div>
+              )
+            })
+          })()}
           <div className="editfoot">
-            <button type="button" className="btn pill" onClick={() => setData({ ...data, lines: [...data.lines, emptyLine()] })}>
-              + 줄 추가
+            <button type="button" className="btn pill" onClick={() => addLine('steps')}>
+              + 스텝 줄
             </button>
-            <span>마지막 "마무리"는 자동으로 붙어요</span>
+            <button type="button" className="btn pill" onClick={() => addLine('section')}>
+              + 구간
+            </button>
+            <button type="button" className="btn pill" onClick={() => addLine('repeat')}>
+              + 반복
+            </button>
+            <button type="button" className="btn pill" onClick={() => addLine('rest')}>
+              + 쉬기
+            </button>
           </div>
+          <div className="edittip">스텝 여러 개는 " / "로 나눠요. 스텝 이름 뒤 숫자가 박수예요. 예) 런닝맨 4 / 찰스턴 8 / W 2 / V 2</div>
         </div>
 
         <div className="field">
-          <label htmlFor="m">참고</label>
-          <input id="m" value={data.memo} onChange={(e) => setData({ ...data, memo: e.target.value })} placeholder="예: Y스텝시 손동작 있음" />
+          <label htmlFor="m">비고 (규칙·참고)</label>
+          <input id="m" value={data.memo} onChange={(e) => setData({ ...data, memo: e.target.value })} placeholder="예: 후렴은 2번 반복, 영상 참고" />
         </div>
 
         <div className="field">

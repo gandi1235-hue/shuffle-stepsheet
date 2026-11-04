@@ -1,4 +1,4 @@
-import { sheetStats, type Line } from '../lib/types'
+import { fmtBeats, kindOf, sheetStats, type Line, type Note } from '../lib/types'
 
 interface Props {
   title: string
@@ -12,56 +12,98 @@ interface Props {
   onMemo?: () => void
 }
 
-/** 대한셔플댄스협회 스텝지 양식: 머리말 표 + 한 줄에 스텝 1~2개 (N박). 화면·인쇄 공용 */
+const NOTE_PREFIX: Partial<Record<NonNullable<Note['type']>, string>> = { hand_motion: '손동작', caution: '주의' }
+
+/** 셔플박스 표준 양식: 머리말 + 번호 줄(스텝명 박수 / …) + 파란 해설. 검정·파랑·회색만 씀. 화면·문서·인쇄 공용 */
 export default function SheetTable({ title, artist, creator, creatorInfo, lines, memo, big, onMemo }: Props) {
   const st = sheetStats(lines)
-  const rows = lines.map((l) => l.steps.filter((s) => s.name.trim()))
+  let n = 0
+  const rows = lines
+    .map((l) => ({ l, kind: kindOf(l) }))
+    .filter(({ l, kind }) => (kind === 'steps' ? l.steps.some((s) => s.name.trim()) || l.notes?.length : (l.label ?? '').trim() || l.notes?.length))
   return (
     <div className={big ? 'form big' : 'form'}>
       <div className="form-head">
-        <div className="k">응시자</div>
-        <div className="v">
-          <b>{creator}</b>
-          {creatorInfo && <span className="sub">{creatorInfo}</span>}
-        </div>
-        <div className="k">안무곡</div>
+        <div className="k">제목</div>
         <div className="v">
           <b>{title}</b>
           {artist && <span className="sub">{artist}</span>}
         </div>
+        <div className="k">창작자</div>
+        <div className="v">
+          <b>{creator}</b>
+          {creatorInfo && <span className="sub">{creatorInfo}</span>}
+        </div>
       </div>
 
       <ol className="form-body">
-        {rows.map((steps, i) => (
-          <li className={steps.length > 1 ? 'line two' : 'line'} key={i}>
-            <span className="no">{i + 1}</span>
-            {steps.map((s, j) => (
-              <span className="st" key={j}>
-                <span className={s.uncertain ? 'name uncertain' : 'name'}>{s.name}</span>
-                {s.beats && <span className="beats">{s.beats}</span>}
-              </span>
-            ))}
-          </li>
-        ))}
-        <li className="line end">
-          <span className="no" />
-          <span className="st">
-            <span className="name">마무리</span>
-          </span>
-        </li>
+        {rows.map(({ l, kind }, i) => {
+          if (kind === 'section') {
+            n = 0
+            return (
+              <li className="sec" key={i}>
+                {l.label}
+                <Notes notes={l.notes} />
+              </li>
+            )
+          }
+          const no = kind === 'steps' ? String(++n) : kind === 'repeat' ? '↻' : ''
+          return (
+            <li className={`line ${kind}`} key={i}>
+              <span className="no">{no}</span>
+              <div className="body">
+                {kind === 'steps' ? (
+                  <div className="main">
+                    {l.steps
+                      .filter((s) => s.name.trim())
+                      .map((s, j) => (
+                        <span className="st" key={j}>
+                          {j > 0 && <span className="sep">/</span>}
+                          <span className={s.uncertain ? 'name uncertain' : 'name'} title={s.raw && s.raw !== s.name ? `원문: ${s.raw}` : undefined}>
+                            {s.name}
+                          </span>
+                          {s.beats && <span className="beats">{fmtBeats(s.beats)}</span>}
+                        </span>
+                      ))}
+                  </div>
+                ) : (
+                  <div className="main">{l.label}</div>
+                )}
+                <Notes notes={l.notes} />
+              </div>
+            </li>
+          )
+        })}
       </ol>
 
       {(memo || onMemo) && (
         <div className={onMemo ? 'form-memo tap' : 'form-memo'} onClick={onMemo} role={onMemo ? 'button' : undefined}>
-          <span className="k">참고</span>
+          <span className="k">비고</span>
           <span className={memo ? '' : 'ph no-print'}>{memo || '+ 메모 적기'}</span>
         </div>
       )}
       <div className="form-stats">
         <span>{st.lines}줄</span>
         <span>{st.steps}스텝</span>
-        <span>{st.beats}박</span>
+        {st.beats > 0 && <span>{st.beats}박</span>}
       </div>
     </div>
+  )
+}
+
+function Notes({ notes }: { notes?: Note[] }) {
+  if (!notes?.length) return null
+  return (
+    <>
+      {notes.map((nt, k) => {
+        const pre = nt.type ? NOTE_PREFIX[nt.type] : undefined
+        return (
+          <div className={`note ${nt.type ?? 'note'}`} key={k}>
+            {pre && <span className="tag">{pre}</span>}
+            {nt.text}
+          </div>
+        )
+      })}
+    </>
   )
 }

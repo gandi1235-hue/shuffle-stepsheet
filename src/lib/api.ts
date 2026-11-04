@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { stepNames, type Folder, type Recognized, type Role, type Song, type Stepsheet } from './types'
+import { normalizeLines, stepNames, type Folder, type Recognized, type Role, type Song, type Stepsheet } from './types'
 
 export async function listFolders(): Promise<Folder[]> {
   const { data: members, error } = await supabase
@@ -36,13 +36,15 @@ export async function listSongs(folderId: string): Promise<SongWithSheets[]> {
     .eq('folder_id', folderId)
     .order('title')
   if (error) throw error
-  return (data ?? []).map((s) => ({ ...(s as Song), sheets: (s.stepsheets as Stepsheet[]) ?? [] }))
+  return (data ?? []).map((s) => ({ ...(s as Song), sheets: ((s.stepsheets as Stepsheet[]) ?? []).map((sh) => ({ ...sh, lines: normalizeLines(sh.lines) })) }))
 }
 
 export async function getSheet(id: string): Promise<Stepsheet | null> {
   const { data, error } = await supabase.from('stepsheets').select('*, song:songs(*)').eq('id', id).maybeSingle()
   if (error) throw error
-  return (data as Stepsheet | null) ?? null
+  if (!data) return null
+  const sh = data as Stepsheet
+  return { ...sh, lines: normalizeLines(sh.lines) }
 }
 
 export async function recentSheets(limit = 6): Promise<Stepsheet[]> {
@@ -183,8 +185,9 @@ export async function recognize(files: File[]): Promise<Recognized> {
   if (error) throw error
   if (data?.error) throw new Error(data.error)
   const r = data as Recognized
-  if (!r.lines?.length) r.lines = []
+  r.lines = normalizeLines(r.lines)
   r.creator_info ??= ''
+  r.memo ??= ''
   return r
 }
 

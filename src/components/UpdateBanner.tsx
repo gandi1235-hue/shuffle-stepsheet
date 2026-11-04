@@ -1,14 +1,27 @@
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
-/** 새 버전이 배포되면 위에 알림을 띄우고, 누르면 바로 새 버전으로 */
+/** 입력 중인 화면이면 새 버전을 바로 적용하지 않고 알림만 */
+const editing = () => /#\/(add|edit)/.test(window.location.hash)
+
+/**
+ * 새 버전이 배포되면 모두의 앱에 자동 반영.
+ * - 앱을 열 때, 다시 돌아올 때, 1분마다 새 버전 확인
+ * - 새 버전이 있으면 바로 새로고침 (스텝지 입력 중일 때만 알림을 띄우고 기다림)
+ */
 export default function UpdateBanner() {
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW({
     onRegisteredSW(_url, r) {
-      // 1분마다 새 버전이 있는지 확인
-      if (r) setInterval(() => r.update(), 60 * 1000)
+      if (!r) return
+      setInterval(() => r.update(), 60 * 1000)
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') r.update()
+      })
+    },
+    onNeedRefresh() {
+      if (!editing()) updateServiceWorker(true)
     },
   })
   if (!needRefresh) return null

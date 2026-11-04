@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import InstallBanner from '../components/InstallBanner'
 import Onboarding from '../components/Onboarding'
-import { Camera, Chevron, Folder as FolderIcon, Gear, Music, People, Brand } from '../components/Icons'
+import { Camera, Chevron, Folder as FolderIcon, Gear, Music, People, Brand, Share } from '../components/Icons'
+import { useToast } from '../components/ui'
+import { shareApp } from '../lib/share'
 import { listFolders, recentSheets } from '../lib/api'
 import type { Folder, Stepsheet } from '../lib/types'
 
@@ -10,6 +12,11 @@ import type { Folder, Stepsheet } from '../lib/types'
 export default function StartPage() {
   const [folders, setFolders] = useState<Folder[]>([])
   const [recent, setRecent] = useState<Stepsheet[]>([])
+  const toast = useToast()
+  const sendApp = async () => {
+    const r = await shareApp()
+    if (r === 'copied') toast('앱 소개 글을 복사했어요. 카카오톡에 붙여 넣으세요.')
+  }
 
   useEffect(() => {
     listFolders().then(setFolders).catch(() => undefined)
@@ -67,6 +74,17 @@ export default function StartPage() {
             <span className="tile-desc">글자 크기 · 고대비 · 계정</span>
           </Link>
         </div>
+
+        <button type="button" className="card tap" onClick={sendApp}>
+          <span className="ico soft">
+            <Share />
+          </span>
+          <span className="grow">
+            <span className="t">친구에게 앱 보내기</span>
+            <span className="meta">카카오톡으로 링크 보내기 · 받은 사람도 바로 설치</span>
+          </span>
+          <Chevron />
+        </button>
 
         {recent.length > 0 && (
           <div className="list">
