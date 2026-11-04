@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
   try {
     // 로그인한 사람만: 앱이 보낸 사용자 토큰을 Auth 서버에 확인한다 (공개 키만으로는 못 씀)
     const auth = req.headers.get("Authorization") ?? "";
-    const apikey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
+    const apikey = req.headers.get("apikey") || Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
     const who = auth.startsWith("Bearer ")
       ? await fetch(`${Deno.env.get("SUPABASE_URL")}/auth/v1/user`, { headers: { apikey, Authorization: auth } }).then((r) => r.ok).catch(() => false)
       : false;
