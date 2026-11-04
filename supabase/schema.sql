@@ -90,7 +90,7 @@ create or replace function join_folder(code text) returns uuid
 language plpgsql security definer set search_path = public as $$
 declare f uuid;
 begin
-  select id into f from folders where invite_code = code and kind = 'shared';
+  select id into f from folders where lower(invite_code) = lower(trim(code)) and kind = 'shared';
   if f is null then raise exception '초대 코드가 맞지 않습니다'; end if;
   insert into folder_members (folder_id, user_id, role) values (f, auth.uid(), 'viewer')
     on conflict do nothing;

@@ -241,8 +241,9 @@ export async function createSharedFolder(name: string): Promise<string> {
   return data as string
 }
 
+/** 초대 코드로 참여. 코드는 소문자 16진수로 저장돼 있어서, 대문자로 적어도(휴대폰 자동 대문자) 들어가게 소문자로 맞춤 */
 export async function joinFolder(code: string): Promise<string> {
-  const { data, error } = await supabase.rpc('join_folder', { code })
+  const { data, error } = await supabase.rpc('join_folder', { code: code.trim().toLowerCase() })
   if (error) throw error
   return data as string
 }

@@ -13,7 +13,7 @@ export default function JoinPage() {
 
   useEffect(() => {
     localStorage.removeItem(PENDING_JOIN)
-    joinFolder(code.trim().toUpperCase())
+    joinFolder(code)
       .then((id) => {
         toast('폴더에 들어왔어요')
         nav(`/folder/${id}`, { replace: true })

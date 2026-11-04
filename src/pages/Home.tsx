@@ -195,7 +195,7 @@ export default function Home() {
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder={dlg === 'new' ? '예: 월수반' : '예: AB12CD'}
-              autoCapitalize={dlg === 'join' ? 'characters' : undefined}
+              autoCapitalize={dlg === 'join' ? 'none' : undefined}
             />
           </div>
           <button type="submit" className="btn primary block" disabled={!text.trim()}>
