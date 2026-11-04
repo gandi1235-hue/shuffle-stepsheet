@@ -41,7 +41,7 @@ export default function FolderPage() {
         right={
           folder?.kind === 'shared' ? (
             <Link to={`/folder/${id}/members`} className="btn pill" style={{ minHeight: 38 }}>
-              <People /> 멤버
+              <People /> 멤버·관리
             </Link>
           ) : undefined
         }

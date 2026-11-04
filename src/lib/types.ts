@@ -68,6 +68,8 @@ export interface Stepsheet {
   creator_info: string
   lines: Line[]
   memo: string
+  /** 노래 동기화: lines 순서대로 각 줄이 시작되는 시각(초). 안 찍은 줄은 null */
+  sync?: (number | null)[] | null
   audio_path: string | null
   audio_url: string | null
   photo_paths: string[]

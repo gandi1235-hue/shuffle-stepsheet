@@ -11,13 +11,42 @@ function fmt(s: number) {
   return `${m}:${r.toString().padStart(2, '0')}`
 }
 
-export default function Player({ src, name, onBig }: { src: string; name: string; onBig?: () => void }) {
+export interface PlayerHandle {
+  time: () => number
+  seek: (t: number, play?: boolean) => void
+  play: () => void
+  pause: () => void
+}
+
+export default function Player({ src, name, onBig, onTime, handle }: { src: string; name: string; onBig?: () => void; onTime?: (t: number) => void; handle?: React.MutableRefObject<PlayerHandle | null> }) {
   const ref = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying] = useState(false)
   const [t, setT] = useState(0)
   const [d, setD] = useState(0)
   const [speed, setSpeed] = useState(1)
   const [loop, setLoop] = useState<{ a: number; b: number | null } | null>(null)
+
+  const onTimeRef = useRef(onTime)
+  onTimeRef.current = onTime
+
+  useEffect(() => {
+    if (!handle) return
+    handle.current = {
+      time: () => ref.current?.currentTime ?? 0,
+      seek: (t, play) => {
+        const a = ref.current
+        if (!a) return
+        a.currentTime = Math.max(0, t)
+        setT(a.currentTime)
+        if (play) a.play()
+      },
+      play: () => ref.current?.play(),
+      pause: () => ref.current?.pause(),
+    }
+    return () => {
+      handle.current = null
+    }
+  }, [handle])
 
   useEffect(() => {
     const a = ref.current
@@ -30,6 +59,7 @@ export default function Player({ src, name, onBig }: { src: string; name: string
     if (!a) return
     const onTime = () => {
       setT(a.currentTime)
+      onTimeRef.current?.(a.currentTime)
       if (loop && loop.b !== null && a.currentTime >= loop.b) a.currentTime = loop.a
     }
     const onMeta = () => setD(a.duration)

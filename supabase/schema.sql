@@ -123,6 +123,8 @@ create policy "folders: 주인 삭제" on folders for delete using (my_role(id) 
 
 create policy "members: 멤버 읽기" on folder_members for select using (my_role(folder_id) is not null);
 create policy "members: 주인 관리" on folder_members for all using (my_role(folder_id) = 'owner');
+-- 주인이 아닌 멤버는 스스로 나갈 수 있음
+create policy "members: 본인 나가기" on folder_members for delete using (user_id = auth.uid() and role <> 'owner');
 
 create policy "songs: 멤버 읽기" on songs for select using (my_role(folder_id) is not null);
 create policy "songs: 편집자 쓰기" on songs for insert with check (can_edit(folder_id));
@@ -144,6 +146,9 @@ create policy "storage: 편집자 올리기" on storage.objects for insert
   with check (bucket_id in ('audio', 'photos') and can_edit((storage.foldername(name))[1]::uuid));
 create policy "storage: 편집자 삭제" on storage.objects for delete
   using (bucket_id in ('audio', 'photos') and can_edit((storage.foldername(name))[1]::uuid));
+
+-- 노래 동기화: 줄별 시작 시각(초) 배열 (앱에서 '동기화' 버튼으로 기록)
+alter table stepsheets add column if not exists sync jsonb;
 
 -- 폴더 주인 넘기기 (주인만 가능, 멤버에게만)
 create or replace function transfer_folder_owner(fid uuid, new_owner uuid) returns void

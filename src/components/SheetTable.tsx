@@ -10,16 +10,24 @@ interface Props {
   big?: boolean
   /** 있으면 참고 줄을 눌러 메모를 고칠 수 있음 */
   onMemo?: () => void
+  /** 노래 동기화: 지금 재생 중인 줄(lines 인덱스) */
+  activeIndex?: number
+  /** 줄을 누르면 (lines 인덱스) */
+  onLine?: (index: number) => void
+  /** 줄별 시작 시각(초) 표시 */
+  marks?: (number | null)[]
 }
+
+const mmss = (t: number) => `${Math.floor(t / 60)}:${Math.floor(t % 60).toString().padStart(2, '0')}`
 
 const NOTE_PREFIX: Partial<Record<NonNullable<Note['type']>, string>> = { hand_motion: '손동작', caution: '주의' }
 
 /** 셔플박스 표준 양식: 머리말 + 번호 줄(스텝명 박수 / …) + 파란 해설. 검정·파랑·회색만 씀. 화면·문서·인쇄 공용 */
-export default function SheetTable({ title, artist, creator, creatorInfo, lines, memo, big, onMemo }: Props) {
+export default function SheetTable({ title, artist, creator, creatorInfo, lines, memo, big, onMemo, activeIndex, onLine, marks }: Props) {
   const st = sheetStats(lines)
   let n = 0
   const rows = lines
-    .map((l) => ({ l, kind: kindOf(l) }))
+    .map((l, index) => ({ l, kind: kindOf(l), index }))
     .filter(({ l, kind }) => (kind === 'steps' ? l.steps.some((s) => s.name.trim()) || l.notes?.length : (l.label ?? '').trim() || l.notes?.length))
   return (
     <div className={big ? 'form big' : 'form'}>
@@ -37,7 +45,8 @@ export default function SheetTable({ title, artist, creator, creatorInfo, lines,
       </div>
 
       <ol className="form-body">
-        {rows.map(({ l, kind }, i) => {
+        {rows.map(({ l, kind, index }, i) => {
+          const mark = marks?.[index]
           if (kind === 'section') {
             n = 0
             return (
@@ -48,8 +57,9 @@ export default function SheetTable({ title, artist, creator, creatorInfo, lines,
             )
           }
           const no = kind === 'steps' ? String(++n) : kind === 'repeat' ? '↻' : ''
+          const cls = ['line', kind, activeIndex === index ? 'now' : '', onLine && kind === 'steps' ? 'tap' : ''].filter(Boolean).join(' ')
           return (
-            <li className={`line ${kind}`} key={i}>
+            <li className={cls} key={i} onClick={onLine && kind === 'steps' ? () => onLine(index) : undefined}>
               <span className="no">{no}</span>
               <div className="body">
                 {kind === 'steps' ? (
@@ -71,6 +81,7 @@ export default function SheetTable({ title, artist, creator, creatorInfo, lines,
                 )}
                 <Notes notes={l.notes} />
               </div>
+              {marks && kind === 'steps' && <span className={typeof mark === 'number' ? 'mark' : 'mark empty'}>{typeof mark === 'number' ? mmss(mark) : '–'}</span>}
             </li>
           )
         })}

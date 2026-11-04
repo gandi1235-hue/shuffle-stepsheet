@@ -253,6 +253,30 @@ export async function removeMember(folderId: string, userId: string) {
   if (error) throw error
 }
 
+export async function renameFolder(folderId: string, name: string) {
+  const { error } = await supabase.from('folders').update({ name: name.trim() }).eq('id', folderId)
+  if (error) throw error
+}
+
+/** 공유 폴더 없애기 (주인만). 안의 음원·사진 파일도 지움 */
+export async function deleteFolder(folderId: string) {
+  for (const bucket of ['audio', 'photos'] as const) {
+    const { data } = await supabase.storage.from(bucket).list(folderId, { limit: 1000 })
+    const paths = (data ?? []).map((o) => `${folderId}/${o.name}`)
+    if (paths.length) await supabase.storage.from(bucket).remove(paths)
+  }
+  const { error } = await supabase.from('folders').delete().eq('id', folderId)
+  if (error) throw error
+}
+
+/** 내가 공유 폴더에서 나가기 (주인은 못 나감: 먼저 주인을 넘기거나 폴더를 없애야 함) */
+export async function leaveFolder(folderId: string) {
+  const uid = (await supabase.auth.getUser()).data.user?.id
+  if (!uid) throw new Error('로그인이 필요해요')
+  const { error } = await supabase.from('folder_members').delete().eq('folder_id', folderId).eq('user_id', uid)
+  if (error) throw error
+}
+
 export async function transferOwner(folderId: string, userId: string) {
   const { error } = await supabase.rpc('transfer_folder_owner', { fid: folderId, new_owner: userId })
   if (error) throw error
@@ -268,6 +292,11 @@ export async function guessArtist(title: string): Promise<string> {
   } catch {
     return ''
   }
+}
+
+export async function updateSync(id: string, sync: (number | null)[] | null) {
+  const { error } = await supabase.from('stepsheets').update({ sync, updated_at: new Date().toISOString() }).eq('id', id)
+  if (error) throw error
 }
 
 export async function updateMemo(id: string, memo: string) {
