@@ -12,7 +12,7 @@
   --accent-dark: #b20710;
   --accent-soft: #fdecec;
   --accent-ink: #a3080f;
-  --grad: linear-gradient(135deg, #e50914 0%, #f0202a 60%, #ff4b4b 100%);
+  --grad: linear-gradient(135deg, #e50914 0%, #d2070f 100%);
   --grad-dark: linear-gradient(150deg, #0a0a0b 0%, #161618 55%, #232327 100%);
   --warn-bg: #fff4d6;
   --warn-line: #f0b429;
@@ -127,7 +127,7 @@ button.card { width: 100%; font: inherit; text-align: left; cursor: pointer; }
 /* ── 재생기 ── */
 .player { position: sticky; bottom: 0; margin: 0 8px; padding: 12px 14px calc(14px + env(safe-area-inset-bottom)); border: 1px solid var(--line); border-bottom: 0; border-radius: 20px 20px 0 0; background: var(--surface); box-shadow: 0 -8px 28px -14px rgba(23, 28, 27, 0.25); display: flex; flex-direction: column; gap: 10px; }
 .player .main { display: flex; align-items: center; gap: 12px; }
-.player .play { width: 50px; height: 50px; border: 0; border-radius: 999px; background: var(--grad); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; box-shadow: 0 6px 14px -6px rgba(15, 110, 102, 0.7); }
+.player .play { width: 50px; height: 50px; border: 0; border-radius: 999px; background: var(--grad); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; box-shadow: 0 6px 14px -6px rgba(229, 9, 20, 0.6); }
 .player .play svg { width: 22px; height: 22px; fill: #fff; }
 .player .info { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .player .meta { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--faint); font-variant-numeric: tabular-nums; }

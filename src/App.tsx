@@ -11,16 +11,25 @@ import MembersPage from './pages/MembersPage'
 import SettingsPage from './pages/SettingsPage'
 import SheetPage from './pages/SheetPage'
 import StartPage from './pages/StartPage'
+import JoinPage from './pages/JoinPage'
+import { PENDING_JOIN } from './lib/share'
 
 applyPrefs(loadPrefs())
 
 function Gate() {
   const { session, loading } = useAuth()
   if (loading) return <div className="spinner">불러오는 중…</div>
-  if (!session) return <Login />
+  if (!session) {
+    // 초대 링크로 왔는데 로그인 전이면 코드를 기억해 두고, 로그인 뒤 바로 폴더로
+    const m = window.location.hash.match(/#\/join\/([A-Za-z0-9]+)/)
+    if (m) localStorage.setItem(PENDING_JOIN, m[1])
+    return <Login />
+  }
+  const pending = localStorage.getItem(PENDING_JOIN)
   return (
     <Routes>
-      <Route path="/" element={<StartPage />} />
+      <Route path="/" element={pending ? <Navigate to={`/join/${pending}`} replace /> : <StartPage />} />
+      <Route path="/join/:code" element={<JoinPage />} />
       <Route path="/library" element={<Home />} />
       <Route path="/folder/:id" element={<FolderPage />} />
       <Route path="/folder/:id/members" element={<MembersPage />} />

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { configured, supabase } from '../lib/supabase'
 import { Dancer } from '../components/Icons'
+import { PENDING_JOIN } from '../lib/share'
 
 const appUrl = () => window.location.href.split('#')[0]
 // Supabase 'Custom Provider'(OIDC, identifier: kakao)로 연결. 기본 Kakao provider는 이메일 scope를 강제해 개인 앱에서는 KOE205가 남.
@@ -16,6 +17,7 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [err, setErr] = useState('')
+  const invited = Boolean(localStorage.getItem(PENDING_JOIN))
 
   const kakao = async () => {
     const { error } = await supabase.auth.signInWithOAuth({ provider: 'custom:kakao' as 'kakao', options: { redirectTo: appUrl() } })
@@ -35,7 +37,7 @@ export default function Login() {
       <div>
         <div className="mark"><Dancer /></div>
         <h1>ShuffleBox</h1>
-        <p>셔플박스 · 셔플댄스 스텝지와 음원을 한곳에</p>
+        <p>{invited ? '폴더 초대를 받았어요. 로그인하면 바로 들어가요.' : '셔플박스 · 셔플댄스 스텝지와 음원을 한곳에'}</p>
       </div>
       {!configured && <div className="error">Supabase 설정(.env)이 아직 없습니다. README를 참고해 VITE_SUPABASE_URL과 VITE_SUPABASE_ANON_KEY를 넣어 주세요.</div>}
       {KAKAO_ENABLED && (
