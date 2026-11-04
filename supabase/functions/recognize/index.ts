@@ -297,27 +297,70 @@ Deno.serve(async (req) => {
           fallback = " · 미리보기 장면으로만 맞춤(정확도 낮음)";
           return out;
         };
+        /**
+         * 2단계 맞추기: 1단계(눈) Gemini가 영상/음악을 처음부터 끝까지 보고 관찰 기록(타임라인)만 적고,
+         * 2단계(머리) GPT/Claude 고급 추론이 그 기록을 스텝지·사용자 요청과 대조해 계획을 짠다.
+         * Gemini flash는 보는 건 잘하지만 반복·쉼·순서 추론이 약하고, GPT는 추론이 강하지만 유튜브를 못 보기 때문
+         */
+        const twoStage = !!(keys.openai || keys.claude);
+        const observe = async (part: Record<string, unknown>, what: "video" | "audio") => {
+          const sysOb = what === "video" ? OBSERVE_SYS_VIDEO : OBSERVE_SYS_AUDIO;
+          const askOb = `${what === "video" ? "이 영상을 처음부터 끝까지 보고" : "이 음악을 처음부터 끝까지 듣고"} 관찰 기록을 JSON으로 적어 주세요.${bpm ? ` 참고: 앱이 재 둔 박자는 ${bpm} BPM입니다(틀릴 수도 있음).` : ""}${userReq ? `\n\n참고로 사용자가 이런 말을 했습니다(해석은 다음 단계가 하니 관련 구간을 특히 자세히 기록): "${userReq}"` : ""}`;
+          return await viaGeminiMedia(part, keys.geminis, askOb, sysOb, keys.deep === true, what);
+        };
+        const planFromTimeline = async (timeline: string, what: "video" | "audio") => {
+          const s1 = timeline.indexOf("{"); const e1 = timeline.lastIndexOf("}");
+          const tl = s1 >= 0 ? timeline.slice(s1, e1 + 1) : timeline;
+          const sys2 = sys
+            .replace(inputSec, `[입력]\n- 관찰 기록: 다른 AI가 ${what === "video" ? "영상을 처음부터 끝까지 보고" : "음악을 처음부터 끝까지 듣고"} 적은 타임라인 JSON(${what === "video" ? "동작 구간 moves·반복 repeat_of·" : ""}음악 구조 music·쉼 pauses·첫 동작 시각 dance_start·8박 구절 시작 시각 beats·박자 짐작 bpm_guess). 시각은 ${what === "video" ? "영상" : "음악"}의 실제 재생 시각(초)입니다.`)
+            .replace(`장면 간격이 ${vs.step}초라 시각은 그 절반 정도 오차가 있을 수 있으니`, "기록의 시각은 0.5초쯤 오차가 있을 수 있으니");
+          const ask2 = `[스텝 줄 목록]\n${(body.lines ?? []).map((l: unknown) => String(l)).join("\n")}\n\n[관찰 기록]\n${tl}\n\n[박자]\n${bpm ? `앱이 재 둔 박자 ${bpm} BPM → 한 박 ${beat!.toFixed(3)}초, 4박 ${(beat! * 4).toFixed(2)}초, 8박 ${(beat! * 8).toFixed(2)}초. 기록의 beats/bpm_guess와 크게 다르면 기록 쪽을 믿고 bpm에 적어 주세요.` : "아직 모릅니다. 기록의 beats(8박 구절 시작 시각들)와 bpm_guess로 박자를 재서 bpm에 적어 주세요."}\n\n관찰 기록을 스텝지와 한 줄씩 대조해 각 줄의 시작 시각을 정해 JSON으로 답해 주세요. ${what === "video" ? "moves의 동작 이름·방향·반복 횟수를 스텝 줄과 맞추고, repeat_of와 pauses로 반복·쉼을 찾습니다. " : "음악 구조(전주·절·후렴)와 8박 구절 경계로 줄 시작을 정합니다. "}dance_start가 첫 줄 시작의 기준이고, 이후 줄들은 박자 격자(한 박 = 60/BPM초)에 맞춰 다듬습니다. 기록에 없는 부분은 박자 격자로 채웁니다.${reqSec}`;
+          console.log(`[video] stage 2: planning from timeline (${tl.length} chars)`);
+          return await askAI([], ask2, sys2, { ...keys, gemini: undefined, geminis: [], deep: true }, "video");
+        };
         const viaYt = async () => {
-          const sysYt = sys.replace(inputSec, "[입력]\n- 유튜브 영상 자체(그림과 소리). 시각은 영상의 실제 재생 시각(초)입니다.");
+          const sysYt = sys
+            .replace(inputSec, "[입력]\n- 유튜브 영상 자체(그림과 소리). 시각은 영상의 실제 재생 시각(초)입니다.")
+            .replace(`장면 간격이 ${vs.step}초라 시각은 그 절반 정도 오차가 있을 수 있으니`, "프레임 간격 때문에 0.3초쯤 오차가 있을 수 있으니");
           if (!keys.gemini) return viaStoryboard("Gemini 키 없음");
+          // 초당 2장(고급 추론이면 3장)으로 더 촘촘히 봄. 모델이 fps를 안 받거나 토큰이 넘치면 viaGeminiMediaOne이 알아서 기본(1장)으로
+          const part = { file_data: { file_uri: ytUrl! }, video_metadata: { fps: keys.deep === true ? 3 : 2 } };
+          let timeline = "";
           try {
-            return await viaGeminiMedia({ file_data: { file_uri: ytUrl! } }, keys.geminis, ask, sysYt, keys.deep === true, "video");
+            if (twoStage) timeline = await observe(part, "video");
+            else return await viaGeminiMedia(part, keys.geminis, ask, sysYt, keys.deep === true, "video");
           } catch (e) {
             const msg = (e as Error).message;
             if (!keys.openai && !keys.claude) throw e;
             console.error(`[video] gemini failed, trying storyboard: ${msg.slice(0, 200)}`);
             return viaStoryboard(msg);
           }
+          try {
+            return await planFromTimeline(timeline, "video");
+          } catch (e) {
+            // 2단계가 안 되면 Gemini 혼자 계획까지 (예전 방식)
+            console.error(`[video] stage 2 failed, gemini single-stage: ${(e as Error).message.slice(0, 200)}`);
+            return await viaGeminiMedia(part, keys.geminis, ask, sysYt, keys.deep === true, "video");
+          }
         };
         const viaAudio = async () => {
           const sysAu = sys.replace(inputSec, "[입력]\n- 음악 파일 자체(소리만). 시각은 음악의 실제 재생 시각(초)입니다. 춤은 보이지 않으므로 음악의 구조(전주·절·후렴·브릿지)와 박자, 8박 구절 경계로 줄 시작을 추정합니다.");
           if (!keys.gemini) return viaOpenAIAudio(audioIn!, keys.openai!, ask, sysAu);
+          const part = { inline_data: { mime_type: audioIn!.media_type || "audio/mpeg", data: audioIn!.data } };
+          let timeline = "";
           try {
-            return await viaGeminiMedia({ inline_data: { mime_type: audioIn!.media_type || "audio/mpeg", data: audioIn!.data } }, keys.geminis, ask, sysAu, keys.deep === true, "audio");
+            if (twoStage) timeline = await observe(part, "audio");
+            else return await viaGeminiMedia(part, keys.geminis, ask, sysAu, keys.deep === true, "audio");
           } catch (e) {
             if (!keys.openai) throw e;
             console.error(`[audio] gemini failed, trying openai: ${(e as Error).message.slice(0, 200)}`);
             return viaOpenAIAudio(audioIn!, keys.openai, ask, sysAu);
+          }
+          try {
+            return await planFromTimeline(timeline, "audio");
+          } catch (e) {
+            console.error(`[audio] stage 2 failed, gemini single-stage: ${(e as Error).message.slice(0, 200)}`);
+            return await viaGeminiMedia(part, keys.geminis, ask, sysAu, keys.deep === true, "audio");
           }
         };
         const t = audioIn ? await viaAudio() : ytUrl ? await viaYt() : await askAI(frames, ask, sys, keys, "video");
@@ -498,6 +541,30 @@ function detectKeys(): Keys {
   return { openai, claude, gemini, geminis };
 }
 const ASK = "이 스텝지를 위 양식의 JSON으로 정리해 주세요.";
+/** 2단계 맞추기 1단계(눈): 영상 관찰 기록 양식. 해석 없이 본 것만 시각과 함께 */
+const OBSERVE_SYS_VIDEO = `당신은 셔플댄스 영상을 처음부터 끝까지 보고 관찰 기록(타임라인)을 적는 기록자입니다. 스텝지와 대조하거나 해석하지 않고, 본 것과 들은 것만 시각(초, 소수 첫째 자리)과 함께 정확히 적습니다.
+셔플댄스 기본 스텝: 런닝맨(제자리에서 무릎을 들며 뒤로 미끄러지듯 달림), 티스텝(옆으로 발뒤꿈치·발끝을 비틀며 이동), 찰스턴(앞뒤로 차며 몸을 비틈), 크리스크로스(두 발 교차 점프), 킥, 스핀/턴, 글라이드, 킥볼체인지, 힐, 점핑힐, 쿵쿵.
+
+[출력] 반드시 JSON만:
+{"duration": 영상 길이(초), "dance_start": 첫 춤 동작이 시작되는 시각, "dance_end": 춤이 끝나는 시각, "bpm_guess": 음악 박자 짐작(숫자) 또는 null,
+ "beats": [음악에서 뚜렷하게 새 8박 구절이 시작되는 시각들(초), 처음부터 끝까지 가능한 한 많이, 최소 8개],
+ "music": [{"from": 초, "to": 초, "part": "전주|1절|프리코러스|후렴|간주|2절|브릿지|아웃트로"}],
+ "moves": [{"i": 0, "from": 초, "to": 초, "move": "보이는 동작(스텝 이름, 방향 왼/오/앞/뒤, 반복 횟수, 팔 동작)", "repeat_of": 앞에서 같은 동작을 했던 항목의 i 또는 null}],
+ "pauses": [{"from": 초, "to": 초, "what": "서 있음|준비 자세|인사|전환|멈춤"}],
+ "notes": "그 밖에 눈에 띈 것(한국어, 짧게)"}
+- moves는 동작이 바뀔 때마다 새 항목으로, 적어도 4초마다 하나. 시간 순서대로, 빈틈 없이.
+- 같은 동작 묶음이 앞에서 나왔으면(후렴 반복 등) repeat_of에 그 항목의 i를 적습니다.
+- 시각은 화면과 소리를 함께 보고 가능한 한 정확히. 모르면 null 대신 가장 그럴듯한 값을 적고 notes에 "불확실"이라고 씁니다.`;
+/** 2단계 맞추기 1단계(귀): 음악 관찰 기록 양식 */
+const OBSERVE_SYS_AUDIO = `당신은 음악을 처음부터 끝까지 듣고 구조를 기록하는 기록자입니다. 해석 없이 들은 것만 시각(초, 소수 첫째 자리)과 함께 적습니다.
+
+[출력] 반드시 JSON만:
+{"duration": 길이(초), "dance_start": 전주가 끝나고 본격적인 비트/첫 절이 시작되는 시각, "dance_end": 음악이 끝나거나 비트가 멈추는 시각, "bpm_guess": 박자(숫자),
+ "beats": [새 8박 구절이 시작되는 시각들(초), 처음부터 끝까지 가능한 한 많이, 최소 8개],
+ "music": [{"from": 초, "to": 초, "part": "전주|1절|프리코러스|후렴|간주|2절|브릿지|아웃트로"}],
+ "pauses": [{"from": 초, "to": 초, "what": "비트 멈춤|브레이크|정적"}],
+ "notes": "눈에 띈 것(한국어, 짧게)"}`;
+
 /** 셔플댄스에서 흔히 쓰는 스텝 이름(표기 표준화·오독 교정용 사전) */
 const STEP_VOCAB = [
   "런닝맨", "리버스 런닝맨", "백 런닝맨", "사이드 런닝맨", "RM힐", "티스텝", "더블 티", "싱글 티", "싱싱더블", "찰스턴", "사이드 찰스턴", "백 찰스턴", "크리스크로스", "킥볼체인지", "킥", "하이킥", "사이드킥", "백킥",
@@ -930,6 +997,7 @@ async function viaGeminiMediaOne(mediaPart: Record<string, unknown>, key: string
   const models = await geminiVideoModels(key, deep);
   let lastMsg = "";
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  let part: Record<string, unknown> = mediaPart;
   for (const model of models.slice(0, 5)) {
     for (const withThink of [true, false]) {
       let res: Response;
@@ -941,12 +1009,19 @@ async function viaGeminiMediaOne(mediaPart: Record<string, unknown>, key: string
           headers: { "Content-Type": "application/json", "x-goog-api-key": key },
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: sys }] },
-            contents: [{ role: "user", parts: [mediaPart, { text: ask }] }],
+            contents: [{ role: "user", parts: [part, { text: ask }] }],
             generationConfig: { responseMimeType: "application/json", temperature: 0, ...(withThink ? { thinkingConfig: { thinkingBudget: deep ? 16384 : 8192 } } : {}) },
           }),
         });
         j = await res.json().catch(() => ({}));
         const raw0 = String(j?.error?.message ?? "");
+        // 초당 프레임 수(video_metadata)를 모델이 안 받거나 토큰이 넘치면 기본(1장)으로 다시
+        if (!res.ok && "video_metadata" in part && (res.status === 400 || /token|too large|exceed|context/i.test(raw0)) && attempt < 3) {
+          console.error(`[gemini] ${what} ${model}: fps 설정 빼고 재시도 — ${raw0.slice(0, 100)}`);
+          const { video_metadata: _vm, ...rest } = part;
+          part = rest;
+          continue;
+        }
         const transient = res.status === 503 || res.status === 500 || (res.status === 429 && /per.?minute|PerMinute/i.test(raw0) && !/per.?day|PerDay|free_tier/i.test(raw0));
         if (!transient || attempt >= 2) break;
         const wait = attempt === 0 ? 6000 : 15000;
