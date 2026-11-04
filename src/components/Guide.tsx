@@ -4,8 +4,24 @@ import { ONBOARD_KEY } from '../lib/tour'
 const isIOS = () => /iPhone|iPad|iPod/i.test(navigator.userAgent)
 const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true
 
-export type Deck = 'basic' | 'advanced'
+export type Deck = 'intro' | 'basic' | 'advanced'
 type Card = { emoji: string; bg: string; title: string; desc: string; tips?: string[] }
+
+const INSTALL_TIPS = () =>
+  isStandalone()
+    ? ['이미 홈 화면 앱으로 열려 있어요', '궁금한 건 각 화면 오른쪽 위 ? 버튼에 다 있어요']
+    : isIOS()
+      ? ['① 사파리 아래 공유 버튼(네모에 화살표)', '② "홈 화면에 추가" → 추가', '③ 홈 화면의 ShuffleBox 아이콘으로 열기', '궁금한 건 각 화면 오른쪽 위 ? 버튼에 다 있어요']
+      : ['① 크롬 오른쪽 위 ⋮ 메뉴', '② "홈 화면에 추가" 또는 "앱 설치" → 설치', '③ 홈 화면의 ShuffleBox 아이콘으로 열기', '궁금한 건 각 화면 오른쪽 위 ? 버튼에 다 있어요']
+
+/** 처음 설치했을 때 보는 소개 5장 (친구 소개 카드뉴스와 같은 내용) */
+const INTRO: Card[] = [
+  { emoji: '🕺', bg: 'linear-gradient(135deg, #ffd1e0, #ffb27a)', title: '셔플 스텝지, 폰에 넣고 다니자', desc: 'ShuffleBox는 셔플댄스 스텝지를 모아 두는 앱이에요. 종이 스텝지 사진 찍어 올리면 끝. 설치도 로그인도 카카오로 1분.' },
+  { emoji: '📷', bg: 'linear-gradient(135deg, #7cc4ff, #b39dff)', title: '사진 한 장이면 스텝지가 돼요', desc: '손글씨·프린트 스텝지를 찍으면 AI가 읽어서 줄 단위로 정리해 줘요. 틀린 부분은 바로 고칠 수 있어요.' },
+  { emoji: '🎵', bg: 'linear-gradient(135deg, #5fd39b, #ffd166)', title: '음악 틀면 지금 줄을 짚어 줘요', desc: '유튜브 링크나 음원 파일을 붙이면 AI가 듣고 박자를 맞춰요. 재생 중 지금 출 줄이 하이라이트되니 보면서 연습하기 좋아요.' },
+  { emoji: '👯', bg: 'linear-gradient(135deg, #ff9a7a, #ff7ab8)', title: '동호회 폴더로 같이 써요', desc: '공유 폴더를 만들고 카톡으로 초대하면 멤버 모두 같은 스텝지를 봐요. 수정 완료 표시, 버전 관리, 채팅도 있어요.' },
+  { emoji: '📲', bg: 'linear-gradient(135deg, #9b8cff, #5fc8ff)', title: '앱처럼 설치하고 시작!', desc: isStandalone() ? '홈 화면에 설치가 끝났어요. 이제 바로 시작하면 돼요.' : '홈 화면에 추가하면 주소창 없이 앱처럼 열려요. 1분이면 돼요.', tips: INSTALL_TIPS() },
+]
 
 const BASIC: Card[] = [
   { emoji: '👋', bg: 'linear-gradient(135deg, #ff5f8f, #d9376e)', title: '셔플박스에 어서 오세요', desc: '종이 스텝지와 음원을 한곳에 모아 두는 셔플댄스 연습 앱이에요. 스텝지를 찍어 올리고, 노래를 틀면 지금 추는 줄이 따라와요.', tips: ['첫 화면의 네 칸: 스텝지함 · 새 스텝지 등록 · 공유 폴더 · 멤버 톡', '어느 화면이든 오른쪽 위 ? 를 누르면 그 화면 사용법이 나와요'] },
@@ -29,14 +45,15 @@ const ADVANCED: Card[] = [
 ]
 
 export const DECKS: Record<Deck, { label: string; cards: Card[] }> = {
+  intro: { label: '소개', cards: INTRO },
   basic: { label: '기본 사용법', cards: BASIC },
   advanced: { label: '심화 사용법', cards: ADVANCED },
 }
 
 /**
- * 사용법 카드뉴스. first=true면 처음 실행 안내(기본 6장만, 마지막에 "화면 둘러보기"), 아니면 ? 버튼에서 연 것(기본/심화 탭)
+ * 사용법 카드뉴스. first=true면 처음 실행 안내(소개 5장, 마지막에 "화면 둘러보기"), 아니면 ? 버튼에서 연 것(소개/기본/심화 탭)
  */
-export default function Guide({ deck: initial = 'basic', first = false, onClose }: { deck?: Deck; first?: boolean; onClose: (startTour: boolean) => void }) {
+export default function Guide({ first = false, deck: initial = first ? 'intro' : 'basic', onClose }: { deck?: Deck; first?: boolean; onClose: (startTour: boolean) => void }) {
   const [deck, setDeck] = useState<Deck>(initial)
   const [i, setI] = useState(0)
   const touchX = useRef<number | null>(null)
@@ -110,6 +127,10 @@ export default function Guide({ deck: initial = 'basic', first = false, onClose 
             first ? (
               <button type="button" className="btn primary" onClick={() => finish(true)}>
                 화면 둘러보기 →
+              </button>
+            ) : deck === 'intro' ? (
+              <button type="button" className="btn primary" onClick={() => setDeck('basic')}>
+                기본 사용법 →
               </button>
             ) : deck === 'basic' ? (
               <button type="button" className="btn primary" onClick={() => setDeck('advanced')}>

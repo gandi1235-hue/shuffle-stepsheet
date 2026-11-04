@@ -11,6 +11,7 @@ export const FOLDER_INVITE_TEXT = (folderName: string, code: string) =>
 ${joinUrl(code)}
 
 링크를 누르고 카카오로 로그인하면 폴더에 바로 들어가요.
+홈 화면에 추가하면 앱처럼 열려요 (크롬 ⋮ / 사파리 공유 → 홈 화면에 추가).
 (안 되면 앱에서 "초대 코드로 참여" → 코드 ${code})`
 
 export const APP_SHARE_TEXT = () =>
