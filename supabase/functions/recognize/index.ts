@@ -382,16 +382,9 @@ const ASK = "이 스텝지를 위 양식의 JSON으로 정리해 주세요.";
  * spec = "기본URL|w#h#frames#cols#rows#_#이름#sigh|..." (레벨마다 한 덩어리). 320×180 레벨을 우선, 없으면 가장 큰 것
  */
 async function ytStoryboard(vid: string) {
-  const res = await fetch(`https://www.youtube.com/watch?v=${vid}&hl=ko`, { headers: { "Accept-Language": "ko,en;q=0.8" } });
-  const html = await res.text();
-  const m = html.match(/"playerStoryboardSpecRenderer":\{"spec":"((?:[^"\\]|\\.)*)"/);
-  const lenM = html.match(/"lengthSeconds":"(\d+)"/);
-  if (!m || !lenM) {
-    console.error(`[yt] no storyboard for ${vid}: status ${res.status}, len ${html.length}, ${/consent/i.test(res.url) ? "consent page" : "no spec"}`);
-    throw new Error("유튜브에서 미리보기 장면을 가져오지 못했어요 (비공개·연령 제한 영상이거나 유튜브가 막았어요)");
-  }
-  const spec: string = JSON.parse(`"${m[1]}"`);
-  const duration = Number(lenM[1]);
+  const got = await ytSpec(vid);
+  if (!got) throw new Error("유튜브에서 미리보기 장면을 가져오지 못했어요 (비공개·연령 제한 영상이거나 유튜브가 서버 요청을 막았어요). 잠시 뒤 다시 해 보세요");
+  const { spec, duration } = got;
   const [base, ...levels] = spec.split("|");
   type Lv = { i: number; w: number; h: number; frames: number; cols: number; rows: number; name: string; sigh: string };
   const parsed: Lv[] = levels
@@ -422,6 +415,50 @@ async function ytStoryboard(vid: string) {
   }));
   if (!images.some(Boolean)) throw new Error("유튜브 미리보기 그림을 받지 못했어요");
   return { images, cols: pick.cols, rows: pick.rows, w: pick.w, h: pick.h, total: Math.min(pick.frames, urls.length * pick.cols * pick.rows), interval: duration / pick.frames, duration };
+}
+/**
+ * 스토리보드 spec과 길이 얻기. 1) 웹 플레이어가 쓰는 공개 JSON API(youtubei/v1/player, WEB·WEB_EMBEDDED 클라이언트)
+ * 2) 영상 페이지 HTML. 서버 IP에 따라 어느 쪽은 429/봇 확인이 뜨므로 차례로 시도
+ */
+async function ytSpec(vid: string): Promise<{ spec: string; duration: number } | null> {
+  const clients = [
+    { clientName: "WEB", clientVersion: "2.20250101.00.00" },
+    { clientName: "WEB_EMBEDDED_PLAYER", clientVersion: "1.20250101.00.00" },
+  ];
+  for (const client of clients) {
+    try {
+      const res = await fetch("https://www.youtube.com/youtubei/v1/player?prettyPrint=false", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept-Language": "ko,en;q=0.8" },
+        body: JSON.stringify({ context: { client: { ...client, hl: "ko", gl: "KR" } }, videoId: vid, contentCheckOk: true, racyCheckOk: true }),
+      });
+      const j = await res.json().catch(() => ({}));
+      const spec = j?.storyboards?.playerStoryboardSpecRenderer?.spec;
+      const duration = Number(j?.videoDetails?.lengthSeconds);
+      const status = j?.playabilityStatus?.status;
+      if (typeof spec === "string" && duration > 0) {
+        console.log(`[yt] spec via player api (${client.clientName})`);
+        return { spec, duration };
+      }
+      console.error(`[yt] player api ${client.clientName}: http ${res.status}, playability ${status ?? "?"} ${j?.playabilityStatus?.reason ?? ""}, spec ${spec ? "yes" : "no"}`);
+    } catch (e) {
+      console.error(`[yt] player api ${client.clientName} failed: ${(e as Error).message}`);
+    }
+  }
+  try {
+    const res = await fetch(`https://www.youtube.com/watch?v=${vid}&hl=ko`, { headers: { "Accept-Language": "ko,en;q=0.8" } });
+    const html = await res.text();
+    const m = html.match(/"playerStoryboardSpecRenderer":\{"spec":"((?:[^"\\]|\\.)*)"/);
+    const lenM = html.match(/"lengthSeconds":"(\d+)"/);
+    if (m && lenM) {
+      console.log("[yt] spec via watch page");
+      return { spec: JSON.parse(`"${m[1]}"`), duration: Number(lenM[1]) };
+    }
+    console.error(`[yt] watch page: status ${res.status}, len ${html.length}, ${/consent/i.test(res.url) ? "consent page" : "no spec"}`);
+  } catch (e) {
+    console.error(`[yt] watch page failed: ${(e as Error).message}`);
+  }
+  return null;
 }
 function b64(bytes: Uint8Array): string {
   let bin = "";
@@ -535,9 +572,10 @@ async function viaOpenAI(images: Img[], key: string, ask: string, sys: string, t
   const want = task === "photo" ? envWant || "high" : deep ? envWant || "xhigh" : Deno.env.get("OPENAI_FAST_REASONING")?.trim() || "low";
   const ladder = ["xhigh", "high", "medium", "low"];
   const efforts = [want, ...ladder.slice(Math.max(0, ladder.indexOf(want) + 1))].filter((v, i, a) => a.indexOf(v) === i);
+  // text.format=json_object를 쓰려면 입력 메시지에 "json"이라는 말이 있어야 함
   const content = [
     ...images.map((i) => ({ type: "input_image", image_url: `data:${i.media_type};base64,${i.data}`, detail: "high" })),
-    { type: "input_text", text: ask },
+    { type: "input_text", text: /json/i.test(ask) ? ask : `${ask}\n\n(답은 JSON으로만)` },
   ];
   let lastMsg = "";
   for (const effort of efforts) {
