@@ -5,7 +5,7 @@ const isIOS = () => /iPhone|iPad|iPod/i.test(navigator.userAgent)
 const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true
 
 export type Deck = 'intro' | 'basic' | 'advanced'
-type Card = { emoji: string; bg: string; title: string; desc: string; tips?: string[] }
+type Card = { emoji: string; bg: string; title: string; desc: string; tips?: string[]; hot?: boolean }
 
 const INSTALL_TIPS = () =>
   isStandalone()
@@ -16,11 +16,11 @@ const INSTALL_TIPS = () =>
 
 /** 처음 설치했을 때 보는 소개 5장 (친구 소개 카드뉴스와 같은 내용) */
 const INTRO: Card[] = [
-  { emoji: '🕺', bg: 'linear-gradient(135deg, #ffd1e0, #ffb27a)', title: '셔플 스텝지, 폰에 넣고 다니자', desc: 'ShuffleBox는 셔플댄스 스텝지를 모아 두는 앱이에요. 종이 스텝지 사진 찍어 올리면 끝. 설치도 로그인도 카카오로 1분.' },
-  { emoji: '📷', bg: 'linear-gradient(135deg, #7cc4ff, #b39dff)', title: '사진 한 장이면 스텝지가 돼요', desc: '손글씨·프린트 스텝지를 찍으면 AI가 읽어서 줄 단위로 정리해 줘요. 틀린 부분은 바로 고칠 수 있어요.' },
-  { emoji: '🎵', bg: 'linear-gradient(135deg, #5fd39b, #ffd166)', title: '음악 틀면 지금 줄을 짚어 줘요', desc: '유튜브 링크나 음원 파일을 붙이면 AI가 듣고 박자를 맞춰요. 재생 중 지금 출 줄이 하이라이트되니 보면서 연습하기 좋아요.' },
-  { emoji: '👯', bg: 'linear-gradient(135deg, #ff9a7a, #ff7ab8)', title: '동호회 폴더로 같이 써요', desc: '공유 폴더를 만들고 카톡으로 초대하면 멤버 모두 같은 스텝지를 봐요. 수정 완료 표시, 버전 관리, 채팅도 있어요.' },
-  { emoji: '📲', bg: 'linear-gradient(135deg, #9b8cff, #5fc8ff)', title: '앱처럼 설치하고 시작!', desc: isStandalone() ? '홈 화면에 설치가 끝났어요. 이제 바로 시작하면 돼요.' : '홈 화면에 추가하면 주소창 없이 앱처럼 열려요. 1분이면 돼요.', tips: INSTALL_TIPS() },
+  { emoji: '🗂️', bg: 'linear-gradient(135deg, #ffd1e0, #ffb27a)', title: '스텝지 파일, 너무 많아 못 찾겠죠?', desc: '카톡방에 흩어진 사진·파일 그만 뒤지세요. ShuffleBox에 모아 두면 노래 이름으로 바로 찾아요.', tips: ['곡 이름·창작자로 검색', '내 폴더 / 동호회 폴더로 정리', '같은 곡 여러 버전도 한 묶음'] },
+  { emoji: '📷', bg: 'linear-gradient(135deg, #7cc4ff, #b39dff)', title: '찍어도 되고, 있는 파일도 돼요', desc: '종이 스텝지를 바로 찍거나, 카톡으로 받은 사진·캡처를 올리면 AI가 읽어서 줄 단위 스텝지로 만들어요.', tips: ['손글씨·프린트·칠판 다 돼요', '여러 장 한 번에', '틀린 글자는 눌러서 바로 수정'] },
+  { emoji: '🎬', bg: 'linear-gradient(135deg, #5fd39b, #ffd166)', title: '영상·음악까지, 싱크로 맞춰 연습', desc: '유튜브 링크, 영상 파일, 음원 파일을 붙이면 AI가 보고 들어서 박자를 맞춰요. 재생하면 지금 출 줄이 따라와요.', tips: ['느리게 재생 · 구간 반복', '줄 누르면 그 자리로 이동', '영상은 스텝지 옆에 두고 보기'] },
+  { emoji: '👯', bg: 'linear-gradient(135deg, #ff9a7a, #ff7ab8)', title: '동호회 폴더로 같이 써요', desc: '공유 폴더 만들고 카톡으로 초대하면 멤버 모두 같은 스텝지를 봐요. 한 사람이 올리면 다 같이 보여요.', tips: ['초대 링크 누르면 바로 참여', '수정 완료 표시 · 멤버 톡'] },
+  { emoji: '📲', bg: 'linear-gradient(135deg, #d9376e, #7c4dff)', title: '꼭! 앱처럼 설치하세요', desc: isStandalone() ? '홈 화면에 설치가 끝났어요. 이제 바로 시작하면 돼요.' : '홈 화면에 추가하면 주소창 없이 앱처럼 열려요. 1분이면 끝.', tips: INSTALL_TIPS(), hot: true },
 ]
 
 const BASIC: Card[] = [
@@ -69,7 +69,7 @@ export default function Guide({ first = false, deck: initial = first ? 'intro' :
   return (
     <div className="scrim center" onClick={() => finish(false)}>
       <div
-        className="onboard card-news"
+        className={`onboard card-news${c.hot ? ' hot' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-label="사용법"

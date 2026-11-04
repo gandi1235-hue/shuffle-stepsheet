@@ -725,6 +725,11 @@ a.msg-who { display: block; }
 .onboard.card-news p { margin: 0 22px; min-height: 76px; font-size: 16px; }
 .onboard.card-news .onboard-actions { padding: 0 18px; box-sizing: border-box; }
 .onboard.card-news .dots { margin: 2px 0 6px; }
+.onboard.card-news.hot { box-shadow: 0 0 0 3px var(--accent), var(--shadow-float); }
+.onboard.card-news.hot h2 { color: var(--accent-ink); }
+.onboard.card-news.hot .card-emoji { animation: bump 1.2s ease-in-out infinite; }
+.onboard.card-news.hot .card-tips li { color: var(--fg); font-weight: 600; }
+@keyframes bump { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
 
 /* 화면 둘러보기(코치마크) */
 .tour { position: fixed; inset: 0; z-index: 60; }
