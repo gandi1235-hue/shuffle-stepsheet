@@ -156,8 +156,8 @@ export default function Player({ src, name, video, onBig, onTime, handle, extra 
             크게 보기
           </button>
         )}
-        {extra}
       </div>
+      {extra && <div className="tools extra">{extra}</div>}
     </div>
   )
 }

@@ -150,8 +150,8 @@ export default function YouTubePlayer({ videoId, name, onTime, handle, extra }: 
         <button type="button" className="btn" onClick={cycleSpeed}>
           속도 {speed}×
         </button>
-        {extra}
       </div>
+      {extra && <div className="tools extra">{extra}</div>}
     </div>
   )
 }

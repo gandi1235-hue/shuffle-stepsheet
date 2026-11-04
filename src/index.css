@@ -482,11 +482,12 @@ html[data-contrast="high"] .btn, html[data-contrast="high"] .card, html[data-con
 .sync-status.failed, .sync-status.na, .sync-status.weak { color: #ffb4a8; }
 .syncbar .row .btn:disabled { opacity: 0.4; }
 .sync-switch { background: none; border: 0; color: #fff; text-decoration: underline; font-size: 13px; padding: 2px 0; align-self: flex-start; cursor: pointer; }
-.player .btn.sync { flex: 1.2; }
+.player .btn.sync { flex: 1; }
+.player .tools.extra:empty { display: none; }
 .player .btn.sync.on { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
 
 /* 음원/유튜브 고르기 */
-.srcseg { display: inline-flex; flex: 1; border: 1.5px solid var(--line); border-radius: 10px; overflow: hidden; }
+.srcseg { display: inline-flex; flex: 1.3; border: 1.5px solid var(--line); border-radius: 10px; overflow: hidden; }
 .srcseg button { flex: 1; border: 0; background: var(--surface); min-height: 40px; padding: 0 10px; font-size: 14px; font-weight: 700; color: var(--muted); cursor: pointer; white-space: nowrap; }
 .srcseg button.on { background: var(--fg); color: #fff; }
 .syncbar .srcseg { border-color: rgba(255,255,255,0.3); }
