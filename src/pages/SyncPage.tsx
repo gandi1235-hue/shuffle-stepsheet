@@ -9,7 +9,7 @@ import { getFolder, getSheet, planOrder, signedUrl, updateSync } from '../lib/ap
 import { haptic } from '../lib/prefs'
 import { detectTempo, snapToBeat, type Tempo } from '../lib/tempo'
 import { activeLine, eventsOf, marksFromEvents, withSync, type Folder, type Stepsheet, type SyncEvent, type SyncSource } from '../lib/types'
-import { DEFAULT_BPM, bpmFromEvents, fillEvents, lineBeats, orderOf, orderPromptLines, stepIdxOf } from '../lib/sync'
+import { DEFAULT_BPM, bpmFromEvents, fillEvents, orderOf, orderPromptLines, stepIdxOf } from '../lib/sync'
 
 const fmtT = (x: number) => `${Math.floor(x / 60)}:${Math.floor(x % 60).toString().padStart(2, '0')}`
 const r1 = (x: number) => Math.round(x * 10) / 10
@@ -42,6 +42,55 @@ export default function SyncPage() {
   const [saving, setSaving] = useState(false)
   const [askOpen, setAskOpen] = useState(false)
   const [request, setRequest] = useState('')
+  const [listening, setListening] = useState(false)
+  const [interim, setInterim] = useState('')
+  const recog = useRef<SpeechRecognitionLike | null>(null)
+  const speechOk = Boolean(getSpeechCtor())
+  /** 음성 인식(브라우저 내장, 한국어). 확정된 말은 요청 글에 이어 붙임 */
+  const startListen = () => {
+    const Ctor = getSpeechCtor()
+    if (!Ctor) return
+    const r = new Ctor()
+    r.lang = 'ko-KR'
+    r.interimResults = true
+    r.continuous = true
+    r.onresult = (e) => {
+      let fin = ''
+      let tmp = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const txt = e.results[i][0].transcript
+        if (e.results[i].isFinal) fin += txt
+        else tmp += txt
+      }
+      if (fin) setRequest((q) => `${q}${q && !q.endsWith(' ') ? ' ' : ''}${fin.trim()}`)
+      setInterim(tmp)
+    }
+    r.onerror = (e) => {
+      setListening(false)
+      setInterim('')
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('마이크 사용을 허용해 주세요')
+      else if (e.error !== 'aborted' && e.error !== 'no-speech') toast('음성 인식이 안 됐어요. 글로 적어 주세요')
+    }
+    r.onend = () => {
+      setListening(false)
+      setInterim('')
+    }
+    recog.current = r
+    try {
+      r.start()
+      setListening(true)
+      haptic(10)
+    } catch {
+      toast('음성 인식을 시작하지 못했어요')
+    }
+  }
+  const stopListen = () => {
+    recog.current?.stop()
+    recog.current = null
+    setListening(false)
+    setInterim('')
+  }
+  useEffect(() => () => recog.current?.abort(), [])
   const [asking, setAsking] = useState(false)
   const touched = useRef(false) // 사용자가 줄을 직접 고쳤는지 (분석이 늦게 끝나도 덮어쓰지 않으려고)
 
@@ -158,18 +207,6 @@ export default function SyncPage() {
     setPhase('fix')
     haptic(15)
   }
-  /** 둘째 줄 시작으로 박자 재기 (자동 분석이 안 될 때) */
-  const markSecond = () => {
-    const t1 = now()
-    const first = events[0]
-    if (!first || t1 <= first.t + 0.5 || order.length < 2) return
-    const rate = Math.max(60, Math.min(200, Math.round((lineBeats(sheet, first.line) * 60) / (t1 - first.t))))
-    setBpm(rate)
-    push(fillEvents(sheet, order, first.t, rate))
-    touched.current = true
-    haptic(15)
-    toast(`박자 ${rate} BPM으로 다시 맞췄어요`)
-  }
   const changeBpm = (v: number) => {
     const rate = Math.max(60, Math.min(200, Math.round(v * 10) / 10))
     setBpm(rate)
@@ -277,9 +314,14 @@ export default function SyncPage() {
         />
       </div>
 
-      <Modal open={askOpen} title="영상·노래가 스텝지와 다르면" onClose={() => setAskOpen(false)}>
-        <div className="panel-desc">어떻게 다른지 그냥 적어 주세요. 예: "영상은 2번 줄부터 시작하고 1번 줄은 맨 끝에 한 번" / "후렴(5~8번)을 두 번" / "3번 줄은 안 춤"</div>
-        <textarea className="ask" rows={3} value={request} onChange={(e) => setRequest(e.target.value)} placeholder="예: 2번 줄부터 시작, 1번은 맨 끝에" />
+      <Modal open={askOpen} title="직접 요청" onClose={() => { stopListen(); setAskOpen(false) }}>
+        <div className="panel-desc">말로 하거나 글로 적어 주세요. 예: "2번 줄부터 시작하고 1번은 맨 끝에" / "후렴을 두 번" / "35초부터 시작" / "박자 128"</div>
+        <textarea className="ask" rows={3} value={listening && interim ? `${request}${request ? ' ' : ''}${interim}` : request} onChange={(e) => setRequest(e.target.value)} placeholder="예: 2번 줄부터 시작, 1번은 맨 끝에" />
+        {speechOk && (
+          <button type="button" className={listening ? 'btn mic on' : 'btn mic'} onClick={listening ? stopListen : startListen} disabled={asking}>
+            {listening ? '● 듣는 중… 다 말했으면 누르세요' : '🎤 말로 하기'}
+          </button>
+        )}
         <div className="panel-desc">
           지금 순서: {orderText}
           {orderNote ? ` · ${orderNote}` : ''}
@@ -313,14 +355,14 @@ export default function SyncPage() {
             )}
             <div className={`sync-status ${playingYt ? 'na' : analysis}`}>
               {playingYt ? (
-                tempo && analysis === 'done' ? `유튜브 · 음원에서 찾은 박자 ${tempo.bpm} BPM으로 자동 채워요` : `유튜브 · ${Math.round(bpm * 10) / 10} BPM 기준으로 자동 채워요 (틀리면 둘째 줄 시작으로 박자 재기)`
+                tempo && analysis === 'done' ? `유튜브 · 음원에서 찾은 박자 ${tempo.bpm} BPM으로 자동 채워요` : `유튜브 · ${Math.round(bpm * 10) / 10} BPM 기준으로 자동 채워요 (틀리면 −/+ 또는 직접 요청)`
               ) : (
                 <>
                   {analysis === 'running' && '박자 분석 중… (몇 초 걸려요)'}
                   {analysis === 'done' && tempo && `박자 자동 인식: ${tempo.bpm} BPM`}
-                  {analysis === 'weak' && tempo && `박자 ${tempo.bpm} BPM (확신 낮음 · 틀리면 둘째 줄로 재세요)`}
-                  {analysis === 'failed' && `박자를 못 찾았어요 · ${Math.round(bpm * 10) / 10} BPM 기준으로 채워요 (틀리면 둘째 줄 시작으로 박자 재기)`}
-                  {analysis === 'na' && `${Math.round(bpm * 10) / 10} BPM 기준으로 자동 채워요 (틀리면 둘째 줄 시작으로 박자 재기)`}
+                  {analysis === 'weak' && tempo && `박자 ${tempo.bpm} BPM (확신 낮음 · 틀리면 −/+ 또는 직접 요청)`}
+                  {analysis === 'failed' && `박자를 못 찾았어요 · ${Math.round(bpm * 10) / 10} BPM 기준으로 채워요 (틀리면 −/+ 또는 직접 요청)`}
+                  {analysis === 'na' && `${Math.round(bpm * 10) / 10} BPM 기준으로 자동 채워요 (틀리면 −/+ 또는 직접 요청)`}
                 </>
               )}
               {orderChanged && <span className="order-chip">순서 {orderText}</span>}
@@ -342,9 +384,9 @@ export default function SyncPage() {
                   여기부터 ({firstNo}번 줄 시작)
                 </button>
                 <button type="button" className="btn ask-btn" onClick={() => setAskOpen(true)}>
-                  순서가
+                  직접
                   <br />
-                  달라요
+                  요청
                 </button>
               </div>
             ) : (
@@ -362,15 +404,10 @@ export default function SyncPage() {
                       +
                     </button>
                   </div>
-                  {(!beatsOk || playingYt) && order.length > 1 && (
-                    <button type="button" className="btn" onClick={markSecond} title="박자가 틀릴 때만: 둘째 줄이 시작되는 순간 누르면 박자를 다시 재요">
-                      둘째 줄 시작 <small>(박자 재기)</small>
-                    </button>
-                  )}
                 </div>
                 <div className="row">
                   <button type="button" className="btn" onClick={() => setAskOpen(true)}>
-                    순서가 달라요
+                    직접 요청
                   </button>
                   <button type="button" className="btn" onClick={undo} disabled={!history.length}>
                     되돌리기
@@ -393,4 +430,21 @@ export default function SyncPage() {
       )}
     </div>
   )
+}
+
+/* ── 브라우저 내장 음성 인식 (크롬·사파리) ── */
+interface SpeechRecognitionLike {
+  lang: string
+  interimResults: boolean
+  continuous: boolean
+  onresult: ((e: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null
+  onerror: ((e: { error: string }) => void) | null
+  onend: (() => void) | null
+  start: () => void
+  stop: () => void
+  abort: () => void
+}
+function getSpeechCtor(): (new () => SpeechRecognitionLike) | null {
+  const w = window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike }
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null
 }

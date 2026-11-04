@@ -333,18 +333,23 @@ button.card { width: 100%; font: inherit; text-align: left; cursor: pointer; }
 /* ── 스텝지 화면: 한 화면에 맞춤 ── */
 .sheet-screen { height: var(--app-h, 100dvh); min-height: 0; flex: none; overflow: hidden; }
 .sheet-screen .content { overflow-y: auto; }
-/* 영상과 같이 볼 때: 줄만 원래 크기로, 스크롤 + 지금 줄 따라가기. 끝 줄도 가운데 올 수 있게 아래 여백 */
-.content.follow { padding: 10px 12px 40vh; gap: 10px; }
+/* 영상과 같이 볼 때: 영상은 맨 위에 작게(높이만 맞추고 폭은 자유), 그 아래를 줄이 꽉 채움. 줄은 원래 크기로 스크롤 + 지금 줄 따라가기 */
+.sheet-screen.with-video > .player { order: 1; position: static; margin: 0; padding: 8px 12px 8px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: 0 8px 20px -16px rgba(0,0,0,0.35); gap: 8px; }
+.sheet-screen.with-video > .content, .sheet-screen.with-video > .docview { order: 2; }
+.sheet-screen.with-video .player .yt-box { width: min(100%, calc(32vh * 16 / 9)); max-height: 32vh; margin: 0 auto; border-radius: 10px; overflow: hidden; }
+.sheet-screen.with-video .player .screen-video { width: auto; max-width: 100%; max-height: 32vh; margin: 0 auto; border-radius: 10px; }
+.content.follow { padding: 8px 12px 40vh; gap: 10px; }
 .content.follow .form-body .main { font-size: 18px; }
 .content.follow .form-body .line.now { background: #fff3c4; }
 @media (min-width: 900px) {
-  /* 넓은 화면: 영상은 왼쪽에 크게, 스텝은 오른쪽에 전체 높이로 */
+  /* 넓은 화면(PC): 영상은 왼쪽에 크게, 스텝은 오른쪽에 전체 높이로 */
   body:has(.sheet-screen.with-video) .app { max-width: 1280px; }
   .sheet-screen.with-video { display: grid; grid-template-columns: minmax(380px, 11fr) minmax(0, 9fr); grid-template-rows: auto minmax(0, 1fr); column-gap: 12px; }
   .sheet-screen.with-video > .topbar { grid-column: 1 / -1; grid-row: 1; }
-  .sheet-screen.with-video > .player { grid-column: 1; grid-row: 2; align-self: start; position: static; margin: 12px 0 12px 12px; border-radius: 20px; border-bottom: 1px solid var(--line); box-shadow: var(--shadow); padding-bottom: 14px; }
+  .sheet-screen.with-video > .player { grid-column: 1; grid-row: 2; align-self: start; margin: 12px 0 12px 12px; padding: 0 14px 14px; border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow); gap: 10px; }
   .sheet-screen.with-video > .content, .sheet-screen.with-video > .docview { grid-column: 2; grid-row: 2; min-height: 0; }
-  .sheet-screen.with-video .player .yt-box, .sheet-screen.with-video .player .screen-video { max-height: 72vh; }
+  .sheet-screen.with-video .player .yt-box { width: calc(100% + 28px); max-width: none; max-height: 72vh; margin: 0 -14px 4px; border-radius: 0; }
+  .sheet-screen.with-video .player .screen-video { width: calc(100% + 28px); max-width: none; max-height: 72vh; margin: 0 -14px 4px; border-radius: 0; }
   .sheet-screen.with-video .content.follow { padding-right: 16px; }
 }
 .fit { flex: 1; min-height: 0; padding: 12px 14px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
@@ -514,4 +519,7 @@ html[data-contrast="high"] .btn, html[data-contrast="high"] .card, html[data-con
 
 .syncbar .ask-btn { flex: 0.9; font-size: 13.5px; line-height: 1.15; }
 .syncbar .order-chip { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: rgba(255,255,255,0.15); color: #fff; font-size: 11.5px; }
+.btn.mic { width: 100%; margin-bottom: 8px; min-height: 46px; font-size: 15px; }
+.btn.mic.on { background: var(--accent); border-color: var(--accent); color: #fff; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(229, 9, 20, 0.45); } 50% { box-shadow: 0 0 0 8px rgba(229, 9, 20, 0); } }
 textarea.ask { width: 100%; box-sizing: border-box; border: 1.5px solid var(--line); border-radius: 12px; padding: 12px; font: inherit; font-size: 16px; margin: 8px 0; resize: vertical; }
