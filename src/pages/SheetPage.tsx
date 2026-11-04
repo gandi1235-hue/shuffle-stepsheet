@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Player from '../components/Player'
 import SheetTable from '../components/SheetTable'
 import TopBar from '../components/TopBar'
-import { Close, Edit, Photo, Print, Share } from '../components/Icons'
-import { deleteSheet, getFolder, getSheet, signedUrl } from '../lib/api'
+import { Edit, Photo, Print, Share } from '../components/Icons'
+import { getFolder, getSheet, signedUrl } from '../lib/api'
 import type { Folder, Stepsheet } from '../lib/types'
 
 export default function SheetPage() {
@@ -31,6 +31,7 @@ export default function SheetPage() {
       .catch((e) => setErr(e.message))
   }, [id])
 
+  // 연습 중 화면 꺼짐 방지
   useEffect(() => {
     let lock: { release: () => void } | null = null
     const n = navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => void }> } }
@@ -42,7 +43,7 @@ export default function SheetPage() {
   if (!sheet) return <div className="spinner">불러오는 중…</div>
 
   const canEdit = folder?.role === 'owner' || folder?.role === 'editor'
-    const isExternal = !sheet.audio_path && Boolean(sheet.audio_url)
+  const isExternal = !sheet.audio_path && Boolean(sheet.audio_url)
 
   const share = async () => {
     const url = window.location.href
@@ -54,37 +55,16 @@ export default function SheetPage() {
     }
   }
 
-  const remove = async () => {
-    if (!confirm('이 스텝지를 삭제할까요? 되돌릴 수 없어요.')) return
-    await deleteSheet(sheet.id)
-    nav(`/folder/${sheet.folder_id}`)
-  }
-
-  if (big)
-    return (
-      <div className="screen">
-        <div className="topbar">
-          <h1>{sheet.song?.title}</h1>
-          <button type="button" className="iconbtn" aria-label="크게 보기 닫기" onClick={() => setBig(false)}>
-            <Close />
-          </button>
-        </div>
-        <div className="content">
-          <SheetTable title={sheet.song?.title ?? ''} artist={sheet.song?.artist ?? ''} creator={sheet.creator_name} creatorInfo={sheet.creator_info} lines={sheet.lines} memo={sheet.memo} big />
-        </div>
-        {audio && <Player src={audio} name={sheet.song?.title ?? ''} />}
-      </div>
-    )
-
   return (
-    <div className="screen">
+    <div className="screen sheet-screen">
       <TopBar
-        title={folder?.name ?? ''}
-        back={`/folder/${sheet.folder_id}`}
+        title={sheet.song?.title ?? ''}
+        sub={`${sheet.creator_name}${folder ? ` · ${folder.name}` : ''}`}
+        back="/"
         right={
           <>
             {photos.length > 0 && (
-              <button type="button" className="iconbtn" aria-label="원본 사진 보기" onClick={() => setShowPhotos(!showPhotos)}>
+              <button type="button" className={showPhotos ? 'iconbtn on' : 'iconbtn'} aria-label="원본 사진 보기" aria-pressed={showPhotos} onClick={() => setShowPhotos(!showPhotos)}>
                 <Photo />
               </button>
             )}
@@ -102,36 +82,68 @@ export default function SheetPage() {
           </>
         }
       />
-      <div className="content">
-        {showPhotos && (
-          <div className="list">
-            {photos.map((p, i) => (
-              <img key={i} src={p} alt={`원본 사진 ${i + 1}`} className="photo-view" />
-            ))}
-          </div>
-        )}
 
-        <h2 className="print-title">셔플댄스 스텝지</h2>
-        <SheetTable title={sheet.song?.title ?? ''} artist={sheet.song?.artist ?? ''} creator={sheet.creator_name} creatorInfo={sheet.creator_info} lines={sheet.lines} memo={sheet.memo} />
+      {showPhotos ? (
+        <div className="content">
+          {photos.map((p, i) => (
+            <img key={i} src={p} alt={`원본 사진 ${i + 1}`} className="photo-view" />
+          ))}
+        </div>
+      ) : (
+        <FitBox big={big} setBig={setBig}>
+          <h2 className="print-title">셔플댄스 스텝지</h2>
+          <SheetTable title={sheet.song?.title ?? ''} artist={sheet.song?.artist ?? ''} creator={sheet.creator_name} creatorInfo={sheet.creator_info} lines={sheet.lines} memo={sheet.memo} big={big} />
+        </FitBox>
+      )}
 
-        {isExternal && (
+      {audio && !isExternal && <Player src={audio} name={sheet.song?.title ?? ''} />}
+      {isExternal && (
+        <div className="bottom no-print">
           <a className="btn block" href={sheet.audio_url!} target="_blank" rel="noreferrer">
             음원 링크 열기
           </a>
-        )}
-        {!audio && !isExternal && <div className="notice">아직 붙인 음원이 없어요. {canEdit && '수정에서 음원 파일을 붙일 수 있어요.'}</div>}
-        {!audio && (
-          <button type="button" className="btn block" onClick={() => setBig(true)}>
-            크게 보기
-          </button>
-        )}
-        {canEdit && (
-          <button type="button" className="btn danger block" onClick={remove}>
-            이 스텝지 삭제
-          </button>
-        )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** 자식(스텝지)을 남은 화면 높이에 맞게: 짧으면 큰 글씨 모드, 길면 축소해서 스크롤 없이 한 화면에 */
+function FitBox({ children, big, setBig }: { children: React.ReactNode; big: boolean; setBig: (b: boolean) => void }) {
+  const box = useRef<HTMLDivElement>(null)
+  const inner = useRef<HTMLDivElement>(null)
+  const [scale, setScale] = useState(1)
+  const [height, setHeight] = useState<number>()
+
+  useLayoutEffect(() => {
+    const b = box.current
+    const i = inner.current
+    if (!b || !i) return
+    const calc = () => {
+      const bh = b.clientHeight
+      const ih = i.offsetHeight
+      if (!bh || !ih) return
+      // 큰 글씨 모드는 높이가 약 1.35배. 여유가 충분하면 켜고, 넘치면 끈다(흔들림 방지용 여유 포함)
+      if (!big && ih * 1.45 < bh) return setBig(true)
+      if (big && ih > bh * 1.2) return setBig(false)
+      const s = Math.min(1, bh / ih)
+      setScale(s)
+      setHeight(ih * s)
+    }
+    calc()
+    const ro = new ResizeObserver(calc)
+    ro.observe(b)
+    ro.observe(i)
+    return () => ro.disconnect()
+  }, [children, big, setBig])
+
+  return (
+    <div className="fit" ref={box}>
+      <div className="fit-wrap" style={{ height }}>
+        <div className="fit-inner" ref={inner} style={{ transform: `scale(${scale})` }}>
+          {children}
+        </div>
       </div>
-      {audio && !isExternal && <Player src={audio} name={sheet.song?.title ?? ''} onBig={() => setBig(true)} />}
     </div>
   )
 }

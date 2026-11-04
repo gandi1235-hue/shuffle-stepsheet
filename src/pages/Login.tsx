@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { configured, supabase } from '../lib/supabase'
+import { Music } from '../components/Icons'
 
 const appUrl = () => window.location.href.split('#')[0]
 // 카카오 로그인은 Supabase에서 Kakao provider를 켠 뒤 true로 바꿉니다.
@@ -26,6 +27,7 @@ export default function Login() {
   return (
     <div className="login">
       <div>
+        <div className="mark"><Music /></div>
         <h1>스텝지함</h1>
         <p>셔플댄스 스텝지와 음원을 한곳에</p>
       </div>
@@ -40,7 +42,7 @@ export default function Login() {
           <label htmlFor="email">이메일로 로그인 링크 받기</label>
           <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@email.com" />
         </div>
-        <button type="submit" className="btn big block">
+        <button type="submit" className="btn primary block">
           링크 보내기
         </button>
         {sent && <div className="notice">메일함에서 로그인 링크를 눌러 주세요.</div>}

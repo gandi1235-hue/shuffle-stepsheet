@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import TopBar from '../components/TopBar'
 import { Camera, Photo } from '../components/Icons'
-import { findDuplicate, getSheet, listFolders, recognize, saveSheet } from '../lib/api'
+import { deleteSheet, findDuplicate, getSheet, listFolders, recognize, saveSheet } from '../lib/api'
 import { emptyLine, emptyRecognized, emptyStep, type Folder, type Line, type Recognized } from '../lib/types'
 
 type Stage = 'photo' | 'recognizing' | 'edit' | 'saving'
@@ -167,15 +167,15 @@ export default function AddPage() {
           </div>
         )}
         {previews.length > 0 && (
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div className="hint">
             <div className="thumbs">
               {previews.map((p, i) => (
                 <img key={i} src={p} alt={`원본 ${i + 1}`} style={{ width: 84, height: 108 }} />
               ))}
             </div>
-            <div style={{ fontSize: 15, color: 'var(--muted)' }}>
+            <div>
               사진에서 읽은 내용이에요. 틀린 칸을 눌러 고친 뒤 저장하세요.
-              <div style={{ marginTop: 6, color: 'var(--warn-fg)', fontSize: 14 }}>노란 칸은 확실하지 않은 글자</div>
+              <div className="warnnote">노란 칸은 확실하지 않은 글자</div>
             </div>
           </div>
         )}
@@ -193,7 +193,7 @@ export default function AddPage() {
           </div>
         </div>
 
-        <div style={{ border: '2px solid var(--fg)' }}>
+        <div className="editbox">
           <div className="edithead">
             <div>줄</div>
             <div>스텝 1</div>
@@ -214,11 +214,11 @@ export default function AddPage() {
               </button>
             </div>
           ))}
-          <div style={{ padding: 8, borderTop: '1px solid var(--soft)', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div className="editfoot">
             <button type="button" className="btn pill" onClick={() => setData({ ...data, lines: [...data.lines, emptyLine()] })}>
               + 줄 추가
             </button>
-            <span style={{ fontSize: 13, color: 'var(--faint)' }}>마지막 "마무리"는 자동으로 붙어요</span>
+            <span>마지막 "마무리"는 자동으로 붙어요</span>
           </div>
         </div>
 
@@ -248,6 +248,19 @@ export default function AddPage() {
           </select>
         </div>
         {err && <div className="error">{err}</div>}
+        {editId && (
+          <button
+            type="button"
+            className="btn danger block"
+            onClick={async () => {
+              if (!confirm('이 스텝지를 삭제할까요? 되돌릴 수 없어요.')) return
+              await deleteSheet(editId)
+              nav('/', { replace: true })
+            }}
+          >
+            이 스텝지 삭제
+          </button>
+        )}
       </div>
       <div className="bottom">
         <button type="button" className="btn primary block" disabled={stage === 'saving'} onClick={save}>
