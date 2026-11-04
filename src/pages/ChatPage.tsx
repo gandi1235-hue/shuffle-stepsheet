@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import TopBar from '../components/TopBar'
 import { Sheet as Modal, useToast } from '../components/ui'
-import { deleteMessage, getFolder, listMembers, listMessages, sendMessage, subscribeMessages, type Member, type Message } from '../lib/api'
+import { deleteMessage, getFolder, listMembers, listMessages, markRead, sendMessage, subscribeMessages, type Member, type Message } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import type { Folder } from '../lib/types'
 
@@ -42,13 +42,20 @@ export default function ChatPage() {
     getFolder(id).then(setFolder)
     loadMembers()
     listMessages(id)
-      .then(setMsgs)
+      .then((ms) => {
+        setMsgs(ms)
+        markRead(id)
+      })
       .catch((e) => setErr(e.message))
     const off = subscribeMessages(id, (m) => {
       setMsgs((cur) => (cur.some((x) => x.id === m.id) ? cur : [...cur, m]))
+      markRead(id)
       if (!membersRef.current[m.user_id]) loadMembers()
     })
-    return off
+    return () => {
+      markRead(id)
+      off()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 

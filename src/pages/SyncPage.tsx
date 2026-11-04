@@ -7,8 +7,9 @@ import TopBar from '../components/TopBar'
 import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
 import { getFolder, getSheet, planRequest, signedUrl, updateSync } from '../lib/api'
 import { haptic } from '../lib/prefs'
+import { useSpeech } from '../lib/speech'
 import { detectTempo, snapToBeat, type Tempo } from '../lib/tempo'
-import { activeLine, eventsOf, marksFromEvents, withSync, type Folder, type Stepsheet, type SyncEvent, type SyncSource } from '../lib/types'
+import { activeLine, eventsOf, marksFromEvents, savedBpm, withSync, type Folder, type Stepsheet, type SyncEvent, type SyncSource } from '../lib/types'
 import { DEFAULT_BPM, bpmFromEvents, fillEvents, linesToPlan, orderPromptLines, planLines, planOf, planText, stepIdxOf, type PlanItem } from '../lib/sync'
 
 const fmtT = (x: number) => `${Math.floor(x / 60)}:${Math.floor(x % 60).toString().padStart(2, '0')}`
@@ -42,55 +43,8 @@ export default function SyncPage() {
   const [saving, setSaving] = useState(false)
   const [askOpen, setAskOpen] = useState(false)
   const [request, setRequest] = useState('')
-  const [listening, setListening] = useState(false)
-  const [interim, setInterim] = useState('')
-  const recog = useRef<SpeechRecognitionLike | null>(null)
-  const speechOk = Boolean(getSpeechCtor())
-  /** 음성 인식(브라우저 내장, 한국어). 확정된 말은 요청 글에 이어 붙임 */
-  const startListen = () => {
-    const Ctor = getSpeechCtor()
-    if (!Ctor) return
-    const r = new Ctor()
-    r.lang = 'ko-KR'
-    r.interimResults = true
-    r.continuous = true
-    r.onresult = (e) => {
-      let fin = ''
-      let tmp = ''
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const txt = e.results[i][0].transcript
-        if (e.results[i].isFinal) fin += txt
-        else tmp += txt
-      }
-      if (fin) setRequest((q) => `${q}${q && !q.endsWith(' ') ? ' ' : ''}${fin.trim()}`)
-      setInterim(tmp)
-    }
-    r.onerror = (e) => {
-      setListening(false)
-      setInterim('')
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('마이크 사용을 허용해 주세요')
-      else if (e.error !== 'aborted' && e.error !== 'no-speech') toast('음성 인식이 안 됐어요. 글로 적어 주세요')
-    }
-    r.onend = () => {
-      setListening(false)
-      setInterim('')
-    }
-    recog.current = r
-    try {
-      r.start()
-      setListening(true)
-      haptic(10)
-    } catch {
-      toast('음성 인식을 시작하지 못했어요')
-    }
-  }
-  const stopListen = () => {
-    recog.current?.stop()
-    recog.current = null
-    setListening(false)
-    setInterim('')
-  }
-  useEffect(() => () => recog.current?.abort(), [])
+  const speech = useSpeech((t) => setRequest((q) => `${q}${q && !q.endsWith(' ') ? ' ' : ''}${t}`), toast)
+  const { listening, busy: hearing, seconds, ok: speechOk, start: startListen, stop: stopListen } = speech
   const [asking, setAsking] = useState(false)
   const touched = useRef(false) // 사용자가 줄을 직접 고쳤는지 (분석이 늦게 끝나도 덮어쓰지 않으려고)
 
@@ -122,7 +76,7 @@ export default function SyncPage() {
     setHistory([])
     setOrderNote('')
     if (saved.length) {
-      const rate = bpmFromEvents(s, saved)
+      const rate = savedBpm(s.sync) ?? bpmFromEvents(s, saved)
       setEvents(saved)
       setPlan(planOf(s, saved, rate))
       setBpm(rate)
@@ -130,7 +84,7 @@ export default function SyncPage() {
       touched.current = true
     } else if (src === 'yt') {
       // 유튜브 기본값: 영상 시작과 동시에 1번 줄. 박자는 음원용 동기화가 있으면 거기서, 없으면 기본값
-      const rate = tp?.bpm ?? bpmFromEvents(s, eventsOf(s.sync, 'file'))
+      const rate = savedBpm(s.sync) ?? tp?.bpm ?? bpmFromEvents(s, eventsOf(s.sync, 'file'))
       setBpm(rate)
       setPlan(linesToPlan(idx))
       setEvents(fillEvents(s, linesToPlan(idx), 0, rate))
@@ -284,7 +238,7 @@ export default function SyncPage() {
   const save = async () => {
     setSaving(true)
     try {
-      await updateSync(sheet.id, withSync(sheet.sync, playingYt ? 'yt' : 'file', events))
+      await updateSync(sheet.id, withSync(sheet.sync, playingYt ? 'yt' : 'file', events, bpm))
       haptic(20)
       toast(`${playingYt ? '유튜브' : '음원'}용 동기화를 저장했어요. 재생하면 지금 줄이 표시돼요`)
       nav(`/sheet/${sheet.id}`, { replace: true })
@@ -321,10 +275,10 @@ export default function SyncPage() {
 
       <Modal open={askOpen} title="직접 요청" onClose={() => { stopListen(); setAskOpen(false) }}>
         <div className="panel-desc">말로 하거나 글로 적어 주세요. 순서, 반복, 쉬는 박, 줄 길이, 시작 시각, 박자 다 돼요. 예: "1번 하고 4박 더 쉬고 2번" / "후렴을 두 번" / "3번은 16박으로 길게" / "2번은 35초에" / "박자 128"</div>
-        <textarea className="ask" rows={3} value={listening && interim ? `${request}${request ? ' ' : ''}${interim}` : request} onChange={(e) => setRequest(e.target.value)} placeholder="예: 2번 줄부터 시작, 1번은 맨 끝에" />
+        <textarea className="ask" rows={3} value={request} onChange={(e) => setRequest(e.target.value)} placeholder="예: 1번 하고 4박 더 쉬고 2번" />
         {speechOk && (
-          <button type="button" className={listening ? 'btn mic on' : 'btn mic'} onClick={listening ? stopListen : startListen} disabled={asking}>
-            {listening ? '● 듣는 중… 다 말했으면 누르세요' : '🎤 말로 하기'}
+          <button type="button" className={listening ? 'btn mic on' : 'btn mic'} onClick={listening ? stopListen : startListen} disabled={asking || hearing}>
+            {listening ? `● 녹음 중 ${seconds}초 · 다 말했으면 누르세요` : hearing ? '받아 적는 중…' : '🎤 말로 하기'}
           </button>
         )}
         <div className="panel-desc">
@@ -435,21 +389,4 @@ export default function SyncPage() {
       )}
     </div>
   )
-}
-
-/* ── 브라우저 내장 음성 인식 (크롬·사파리) ── */
-interface SpeechRecognitionLike {
-  lang: string
-  interimResults: boolean
-  continuous: boolean
-  onresult: ((e: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null
-  onerror: ((e: { error: string }) => void) | null
-  onend: (() => void) | null
-  start: () => void
-  stop: () => void
-  abort: () => void
-}
-function getSpeechCtor(): (new () => SpeechRecognitionLike) | null {
-  const w = window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike }
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null
 }

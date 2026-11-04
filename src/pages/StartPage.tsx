@@ -5,7 +5,7 @@ import { Sheet as Modal } from '../components/ui'
 import InstallBanner from '../components/InstallBanner'
 import Onboarding from '../components/Onboarding'
 import { Camera, Chat, Chevron, Folder as FolderIcon, Gear, Music, People, Brand } from '../components/Icons'
-import { getProfile, listFolders, recentSheets, type Profile } from '../lib/api'
+import { getProfile, listFolders, recentSheets, unreadCounts, type Profile } from '../lib/api'
 import type { Folder, Stepsheet } from '../lib/types'
 
 /** 첫 화면: 어디로 갈지 고르는 메뉴판 */
@@ -14,15 +14,22 @@ export default function StartPage() {
   const [recent, setRecent] = useState<Stepsheet[]>([])
   const [profile, setProfile] = useState<Profile | null>(null)
   const [pick, setPick] = useState(false)
+  const [unread, setUnread] = useState<Map<string, number>>(new Map())
   const nav = useNavigate()
 
   useEffect(() => {
-    listFolders().then(setFolders).catch(() => undefined)
+    listFolders()
+      .then((fs) => {
+        setFolders(fs)
+        unreadCounts(fs.filter((f) => f.kind === 'shared').map((f) => f.id)).then(setUnread)
+      })
+      .catch(() => undefined)
     recentSheets(2).then(setRecent).catch(() => undefined)
     getProfile().then(setProfile).catch(() => undefined)
   }, [])
 
   const shared = folders.filter((f) => f.kind === 'shared')
+  const unreadTotal = [...unread.values()].reduce((a, b) => a + b, 0)
   /** 멤버 톡: 공유 폴더가 하나면 바로, 여럿이면 고르기, 없으면 공유 폴더 메뉴로 */
   const openChat = () => {
     if (shared.length === 1) nav(`/folder/${shared[0].id}/chat`)
@@ -81,9 +88,10 @@ export default function StartPage() {
           <button type="button" className="tile" onClick={openChat}>
             <span className="tile-ico">
               <Chat />
+              {unreadTotal > 0 && <span className="badge">{unreadTotal > 99 ? '99+' : unreadTotal}</span>}
             </span>
             <span className="tile-title">멤버 톡</span>
-            <span className="tile-desc">{shared.length ? (shared.length === 1 ? `${shared[0].name} 멤버들과 대화` : `${shared.length}개 폴더 · 골라서 들어가기`) : '공유 폴더에 들어가면 쓸 수 있어요'}</span>
+            <span className="tile-desc">{unreadTotal > 0 ? `새 메시지 ${unreadTotal}개` : shared.length ? (shared.length === 1 ? `${shared[0].name} 멤버들과 대화` : `${shared.length}개 폴더 · 골라서 들어가기`) : '공유 폴더에 들어가면 쓸 수 있어요'}</span>
           </button>
         </div>
 
@@ -95,8 +103,9 @@ export default function StartPage() {
               </span>
               <span className="grow">
                 <span className="t">{f.name}</span>
+                {(unread.get(f.id) ?? 0) > 0 && <span className="s">새 메시지 {unread.get(f.id)}개</span>}
               </span>
-              <Chevron />
+              {(unread.get(f.id) ?? 0) > 0 ? <span className="badge inline">{unread.get(f.id)}</span> : <Chevron />}
             </Link>
           ))}
         </Modal>

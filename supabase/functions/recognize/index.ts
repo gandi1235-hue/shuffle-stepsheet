@@ -3,7 +3,7 @@
 // 비밀키(Edge Functions > Secrets) 중 하나만 넣으면 됩니다:
 //   GEMINI_API_KEY    : Google AI Studio 무료 키 (https://aistudio.google.com/apikey)
 //   ANTHROPIC_API_KEY : Claude API 키 (https://console.anthropic.com)
-// 선택: GEMINI_MODEL (기본 gemini-2.5-flash), CLAUDE_MODEL (기본 claude-sonnet-5-5)
+// 선택: GEMINI_MODEL (기본 gemini-2.5-flash), CLAUDE_MODEL (기본 claude-sonnet-5-5), OPENAI_API_KEY (있으면 말 받아 적기에 Whisper 계열 사용, OPENAI_STT_MODEL 기본 gpt-4o-transcribe)
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
     if (!who) {
       return new Response(JSON.stringify({ error: "로그인이 필요해요" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string } };
+    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string } };
     const geminiKey = findKey(/gemini|google/i);
     const claudeKey = findKey(/ant.?h?rop|claude/i);
 
@@ -109,6 +109,71 @@ Deno.serve(async (req) => {
         }
       }
       throw new Error(`아바타를 만들지 못했어요. ${errors[0] ?? ""}`.trim());
+    }
+
+    // 받아 적기 모드: { audio: {media_type, data(base64), hint?} } — 녹음한 말을 글로. OpenAI 키가 있으면 Whisper 계열, 없으면 Gemini
+    if (body.audio?.data) {
+      const openaiKey = findKey(/openai/i);
+      const hint = body.audio.hint ?? "셔플댄스 스텝지 앱에서 말한 요청. 스텝 이름(런닝맨, 티스텝, 찰스턴, 크리스크로스, 글라이드, 킥볼체인지, 스핀), 박수(4박, 8박), 줄 번호, 초, BPM이 자주 나옴.";
+      if (openaiKey) {
+        const bin = Uint8Array.from(atob(body.audio.data), (c) => c.charCodeAt(0));
+        const ext = body.audio.media_type.includes("mp4") ? "mp4" : body.audio.media_type.includes("ogg") ? "ogg" : body.audio.media_type.includes("wav") ? "wav" : "webm";
+        const form = new FormData();
+        form.append("file", new Blob([bin], { type: body.audio.media_type }), `speech.${ext}`);
+        form.append("model", Deno.env.get("OPENAI_STT_MODEL") ?? "gpt-4o-transcribe");
+        form.append("language", "ko");
+        form.append("prompt", hint);
+        form.append("response_format", "json");
+        const res = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${openaiKey}` }, body: form });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          console.error(`[stt] openai ${res.status} ${j?.error?.message ?? ""}`);
+          throw new Error(j?.error?.message ?? `OpenAI 오류 ${res.status}`);
+        }
+        return new Response(JSON.stringify({ text: String(j.text ?? "").trim(), engine: "openai" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (!geminiKey) throw new Error("받아 적기에는 OpenAI 키나 Gemini 키가 필요해요");
+      const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ inline_data: { mime_type: body.audio.media_type, data: body.audio.data } }, { text: `이 녹음을 한국어로 정확히 받아 적어 주세요. 맥락: ${hint}\n말한 내용만 그대로 적고, 설명이나 따옴표 없이 글만 출력하세요. 아무 말도 없으면 빈 문자열.` }] }],
+          generationConfig: { temperature: 0 },
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error(`[stt] gemini ${res.status} ${j?.error?.message ?? ""}`);
+        throw new Error(j?.error?.message ?? `Gemini 오류 ${res.status}`);
+      }
+      const text = ((j.candidates?.[0]?.content?.parts ?? []) as { text?: string }[]).map((p) => p.text ?? "").join("").trim();
+      return new Response(JSON.stringify({ text, engine: "gemini" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // 스텝 내용 고치기 모드: { edit_request, sheet: { lines, memo } } — 말로 한 요청대로 줄 내용을 직접 바꿔 전체 lines를 돌려줌
+    if (body.edit_request && body.sheet && Array.isArray(body.sheet.lines)) {
+      const sys = `당신은 셔플댄스 스텝지 편집 도우미입니다. 스텝지 JSON과 사용자의 요청(말로 한 것을 받아 적은 글이라 띄어쓰기·조사가 어색할 수 있음)을 읽고, 요청대로 고친 스텝지 전체를 같은 JSON 구조로 돌려줍니다.
+
+[스텝지 구조] lines 배열. 각 줄:
+- {"kind":"steps","steps":[{"name":"런닝맨","beats":"4"},{"name":"티스텝","beats":"4"}],"notes":[{"text":"양손 빠이빠이","type":"hand_motion"}]}  : 스텝 줄. beats는 숫자 문자열("4","8") 또는 "". notes는 선택(type: explanation|hand_motion|style|caution|creator_intent|note|lyric)
+- {"kind":"section","steps":[],"label":"후렴"}  : 구간 제목 줄
+- {"kind":"repeat","steps":[],"label":"처음부터 한 번 더"}  : 반복 지시 줄
+- {"kind":"rest","steps":[],"label":"4박 쉬기"}  : 쉼·전환 줄
+- {"kind":"text","steps":[],"label":"..."}  : 그 밖의 글
+"N번 줄"은 스텝 줄만 1부터 센 번호입니다(구간 줄이 나오면 다시 1부터). 요청의 "N번"은 이 번호를 뜻합니다. 사용자가 줄을 "후렴 첫 줄"처럼 구간으로 가리킬 수도 있습니다.
+
+[규칙]
+- 요청에 언급된 것만 바꾸고 나머지는 글자 하나 바꾸지 않고 그대로 둡니다(raw, uncertain 같은 다른 필드도 그대로).
+- 스텝 이름은 스텝지에서 이미 쓰는 표기를 따르고, 박수를 말하면 beats에 숫자만 적습니다("4박" → "4").
+- "지워", "빼" → 그 줄이나 스텝을 삭제. "추가", "넣어", "아래에" → 그 자리에 새 줄/스텝. "바꿔", "대신" → 교체. "해설", "메모", "손동작" → notes에 추가/수정.
+- 요청이 가리키는 줄을 찾을 수 없거나 뜻을 알 수 없으면 lines를 원본 그대로 두고 unclear에 짧게 되묻는 말(한국어)을 적습니다. 그 밖에는 unclear를 빈 문자열로.
+반드시 JSON {"lines":[...], "note":"바뀐 점 한 줄(한국어, 25자 내)", "unclear":""} 만 출력합니다.`;
+      const ask = `[스텝지]\n${JSON.stringify({ lines: body.sheet.lines, memo: body.sheet.memo ?? "" })}\n\n[요청]\n${String(body.edit_request).trim()}`;
+      const t = geminiKey ? await viaGemini([], geminiKey, ask, sys) : claudeKey ? await viaClaude([], claudeKey, ask, sys) : "";
+      const s0 = t.indexOf("{"); const e0 = t.lastIndexOf("}");
+      const j = s0 >= 0 ? JSON.parse(t.slice(s0, e0 + 1)) : {};
+      return new Response(JSON.stringify({ lines: Array.isArray(j.lines) ? j.lines : null, note: j.note ?? "", unclear: j.unclear ?? "" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // 직접 요청 모드: { order_request, lines } — 비정형 요청을 춤추는 계획(줄 순서·쉼·길이·시작 시각·박자)으로

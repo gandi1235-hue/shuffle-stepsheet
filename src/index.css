@@ -78,6 +78,9 @@ button.tile { font: inherit; text-align: left; cursor: pointer; width: 100%; }
 .tile.big { min-height: 150px; }
 .tile-ico { width: 44px; height: 44px; border-radius: 13px; background: var(--accent-soft); color: var(--accent-ink); display: flex; align-items: center; justify-content: center; margin-bottom: auto; }
 .tile-ico svg { width: 24px; height: 24px; }
+.tile-ico { position: relative; }
+.badge { position: absolute; top: -6px; right: -8px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #e5343f; color: #fff; font-size: 12px; font-weight: 800; line-height: 20px; text-align: center; box-shadow: 0 0 0 2px var(--surface); }
+.badge.inline { position: static; display: inline-block; box-shadow: none; vertical-align: middle; }
 .tile-title { font-size: 17px; font-weight: 700; margin-top: 10px; letter-spacing: -0.01em; }
 .tile-desc { font-size: 13px; color: var(--faint); line-height: 1.4; word-break: keep-all; }
 .tile.accent { background: var(--grad); border-color: transparent; color: #fff; box-shadow: var(--shadow-float); }

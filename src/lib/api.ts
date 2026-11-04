@@ -393,6 +393,31 @@ export function subscribeMessages(folderId: string, cb: (m: Message) => void): (
   }
 }
 
+/* ── 톡 안 읽음 ── */
+const READ_KEY = (folderId: string) => `chat-read-${folderId}`
+/** 이 폴더 톡을 마지막으로 본 시각 (없으면 3일 전으로 봄) */
+export function lastRead(folderId: string): string {
+  return localStorage.getItem(READ_KEY(folderId)) || new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString()
+}
+export function markRead(folderId: string) {
+  localStorage.setItem(READ_KEY(folderId), new Date().toISOString())
+}
+/** 폴더별 안 읽은 메시지 수 (남이 보낸 것만) */
+export async function unreadCounts(folderIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>()
+  if (!folderIds.length) return out
+  const me = (await supabase.auth.getUser()).data.user?.id
+  const since = folderIds.map(lastRead).sort()[0]
+  const { data, error } = await supabase.from('messages').select('folder_id, user_id, created_at').in('folder_id', folderIds).gt('created_at', since)
+  if (error) return out
+  for (const m of data ?? []) {
+    if (m.user_id === me) continue
+    if (m.created_at <= lastRead(m.folder_id)) continue
+    out.set(m.folder_id, (out.get(m.folder_id) ?? 0) + 1)
+  }
+  return out
+}
+
 export async function setMemberRole(folderId: string, userId: string, role: Role) {
   const { error } = await supabase.from('folder_members').update({ role }).eq('folder_id', folderId).eq('user_id', userId)
   if (error) throw error
@@ -489,6 +514,31 @@ export async function moveSheet(id: string, targetFolderId: string): Promise<Ste
   if (src.audio_path) await supabase.storage.from('audio').remove([src.audio_path])
   if (src.photo_paths?.length) await supabase.storage.from('photos').remove(src.photo_paths)
   return saved
+}
+
+/** 녹음 → 글 (엣지 함수가 Whisper 또는 Gemini로 받아 적음) */
+export async function transcribe(blob: Blob, hint?: string): Promise<string> {
+  const b64 = await new Promise<string>((res, rej) => {
+    const r = new FileReader()
+    r.onload = () => res(String(r.result).split(',')[1] ?? '')
+    r.onerror = () => rej(new Error('녹음을 읽지 못했어요'))
+    r.readAsDataURL(blob)
+  })
+  const { data, error } = await supabase.functions.invoke('recognize', { body: { audio: { media_type: blob.type || 'audio/webm', data: b64, hint } } })
+  if (error) {
+    const msg = await (error as { context?: Response }).context?.json?.().then((j: { error?: string }) => j?.error).catch(() => undefined)
+    throw new Error(msg || '받아 적지 못했어요. 다시 말해 주세요')
+  }
+  if (data?.error) throw new Error(data.error)
+  return String(data?.text ?? '').trim()
+}
+
+/** 스텝 내용 고치기: 말로 한 요청("3번 줄 티스텝을 런닝맨 4박으로")대로 AI가 줄을 바꿔 전체 줄을 돌려줌 */
+export async function editLines(lines: Line[], memo: string, request: string): Promise<{ lines: Line[] | null; note: string; unclear: string }> {
+  const { data, error } = await supabase.functions.invoke('recognize', { body: { edit_request: request, sheet: { lines, memo } } })
+  if (error) throw new Error('요청을 이해하지 못했어요. 다시 적어 주세요.')
+  if (data?.error) throw new Error(data.error)
+  return { lines: Array.isArray(data?.lines) ? normalizeLines(data.lines) : null, note: String(data?.note ?? ''), unclear: String(data?.unclear ?? '') }
 }
 
 /**

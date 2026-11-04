@@ -4,7 +4,8 @@ import TopBar from '../components/TopBar'
 import { Sheet as Modal, useToast } from '../components/ui'
 import { haptic } from '../lib/prefs'
 import { Camera, Chevron, Folder as FolderIcon, Music, Photo } from '../components/Icons'
-import { copySheet, deleteSheet, findDuplicate, getSheet, guessArtist, listFolders, listSongs, recognize, saveSheet, type SongWithSheets } from '../lib/api'
+import { copySheet, deleteSheet, editLines, findDuplicate, getSheet, guessArtist, listFolders, listSongs, recognize, saveSheet, type SongWithSheets } from '../lib/api'
+import { useSpeech } from '../lib/speech'
 import { LINE_KINDS, NOTE_TYPES, emptyLine, emptyRecognized, eventsOf, kindOf, lineToText, parseLineText, type Folder, type Line, type LineKind, type NoteType, type Recognized } from '../lib/types'
 
 type Stage = 'photo' | 'recognizing' | 'edit' | 'saving'
@@ -27,6 +28,44 @@ export default function AddPage() {
   const [hasSync, setHasSync] = useState(false)
   const [err, setErr] = useState('')
   const camRef = useRef<HTMLInputElement>(null)
+  // ── 말로 고치기(AI가 줄 내용을 직접 바꿈) ──
+  const [askOpen, setAskOpen] = useState(false)
+  const [askText, setAskText] = useState('')
+  const [asking, setAsking] = useState(false)
+  const [askNote, setAskNote] = useState('')
+  const [undoLines, setUndoLines] = useState<Line[] | null>(null)
+  const applyAsk = async () => {
+    const q = askText.trim()
+    if (!q) return
+    setAsking(true)
+    try {
+      const r = await editLines(data.lines, data.memo, q)
+      if (!r.lines || r.unclear) {
+        toast(r.unclear || '요청을 이해하지 못했어요')
+        return
+      }
+      setUndoLines(data.lines)
+      setData({ ...data, lines: r.lines.length ? r.lines : [emptyLine()] })
+      setTexts({})
+      setAskNote(r.note)
+      setAskText('')
+      setAskOpen(false)
+      haptic(15)
+      toast(r.note ? `고쳤어요: ${r.note}` : '고쳤어요')
+    } catch (e) {
+      toast((e as Error).message)
+    } finally {
+      setAsking(false)
+    }
+  }
+  const undoAsk = () => {
+    if (!undoLines) return
+    setData({ ...data, lines: undoLines })
+    setTexts({})
+    setUndoLines(null)
+    setAskNote('')
+    toast('되돌렸어요')
+  }
   // ── 다른 폴더에서 불러오기(복사) ──
   const [allFolders, setAllFolders] = useState<Folder[]>([])
   const [importOpen, setImportOpen] = useState(false)
@@ -61,6 +100,7 @@ export default function AddPage() {
   }
   const fileRef = useRef<HTMLInputElement>(null)
   const toast = useToast()
+  const speech = useSpeech((t) => setAskText((q) => `${q}${q && !q.endsWith(' ') ? ' ' : ''}${t}`), toast, '셔플댄스 스텝지를 고치는 요청. 스텝 이름(런닝맨, 티스텝, 찰스턴, 크리스크로스, 글라이드, 킥볼체인지), 박수(4박, 8박), 줄 번호가 자주 나옴.')
   const hasAudio = hasAudioPath || Boolean(audioFile) || Boolean(audioUrl.trim())
 
   useEffect(() => {
@@ -353,6 +393,17 @@ export default function AddPage() {
           <div className="edithead">
             <span>번호를 누르면 줄 종류가 바뀌어요 (스텝 → 구간 → 반복 → 쉬기 → 글)</span>
           </div>
+          <div className="editrow" style={{ padding: '8px 10px 2px', gap: 8 }}>
+            <button type="button" className="btn primary" style={{ flex: 1, minHeight: 44 }} onClick={() => setAskOpen(true)}>
+              🎤 말로 고치기
+            </button>
+            {undoLines && (
+              <button type="button" className="btn" style={{ minHeight: 44 }} onClick={undoAsk}>
+                되돌리기
+              </button>
+            )}
+          </div>
+          {askNote && <div className="panel-desc" style={{ padding: '0 12px 6px' }}>방금 고친 것: {askNote}</div>}
           {(() => {
             let n = 0
             return data.lines.map((l, i) => {
@@ -468,6 +519,18 @@ export default function AddPage() {
           </button>
         )}
       </div>
+      <Modal open={askOpen} title="말로 고치기" onClose={() => { speech.stop(); setAskOpen(false) }}>
+        <div className="panel-desc">어느 줄을 어떻게 바꿀지 말하거나 적어 주세요. 예: "3번 줄 티스텝을 런닝맨 4박으로" / "후렴 첫 줄 지워" / "2번 줄 아래에 찰스턴 8박 넣어" / "1번 줄에 손동작 해설 양손 빠이빠이"</div>
+        <textarea className="ask" rows={3} value={askText} onChange={(e) => setAskText(e.target.value)} placeholder="예: 3번 줄 티스텝을 런닝맨 4박으로" />
+        {speech.ok && (
+          <button type="button" className={speech.listening ? 'btn mic on' : 'btn mic'} onClick={speech.listening ? speech.stop : speech.start} disabled={asking || speech.busy}>
+            {speech.listening ? `● 녹음 중 ${speech.seconds}초 · 다 말했으면 누르세요` : speech.busy ? '받아 적는 중…' : '🎤 말로 하기'}
+          </button>
+        )}
+        <button type="button" className="btn primary block" onClick={applyAsk} disabled={asking || !askText.trim()}>
+          {asking ? '고치는 중…' : '이대로 고치기'}
+        </button>
+      </Modal>
       <div className="bottom">
         <button type="button" className="btn primary block" disabled={stage === 'saving'} onClick={save}>
           {stage === 'saving' ? '저장 중…' : editId ? '수정 저장' : '저장'}

@@ -166,7 +166,7 @@ export type Marks = (number | null)[]
 export type SyncEvent = { t: number; line: number }
 export type SyncTrack = Marks | SyncEvent[]
 export type SyncSource = 'file' | 'yt'
-export type SyncData = Marks | { file?: SyncTrack | null; yt?: SyncTrack | null } | null
+export type SyncData = Marks | { file?: SyncTrack | null; yt?: SyncTrack | null; bpm?: number | null } | null
 
 const isEvents = (v: SyncTrack | null | undefined): v is SyncEvent[] => Array.isArray(v) && v.length > 0 && typeof v[0] === 'object' && v[0] !== null
 /** 어떤 저장 모양이든 사건 목록(시간순)으로 */
@@ -186,9 +186,10 @@ export function eventsOf(sync: SyncData | undefined, src: SyncSource): SyncEvent
   return toEvents(sync[src])
 }
 /** 한쪽만 바꿔 넣은 새 값 (둘 다 비면 null) */
-export function withSync(sync: SyncData | undefined, src: SyncSource, events: SyncEvent[] | null): SyncData {
-  const base: { file?: SyncTrack | null; yt?: SyncTrack | null } = !sync ? {} : Array.isArray(sync) ? { file: sync as Marks } : { ...sync }
+export function withSync(sync: SyncData | undefined, src: SyncSource, events: SyncEvent[] | null, bpm?: number): SyncData {
+  const base: { file?: SyncTrack | null; yt?: SyncTrack | null; bpm?: number | null } = !sync ? {} : Array.isArray(sync) ? { file: sync as Marks } : { ...sync }
   base[src] = events && events.length ? events : null
+  if (typeof bpm === 'number' && bpm > 0) base.bpm = Math.round(bpm * 10) / 10
   if (!toEvents(base.file).length && !toEvents(base.yt).length) return null
   return base
 }
@@ -203,4 +204,9 @@ export function activeLine(events: SyncEvent[], t: number): number | undefined {
   let best: number | undefined
   for (const e of events) if (e.t <= t + 0.05) best = e.line
   return best
+}
+/** 저장해 둔 BPM (있으면) */
+export function savedBpm(sync: SyncData | undefined): number | null {
+  if (!sync || Array.isArray(sync)) return null
+  return typeof sync.bpm === 'number' && sync.bpm > 0 ? sync.bpm : null
 }

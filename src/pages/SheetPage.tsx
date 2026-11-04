@@ -7,7 +7,7 @@ import TopBar from '../components/TopBar'
 import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
 import { Copy, Doc, Edit, LayoutSide, LayoutTop, More, Photo, Print, Share } from '../components/Icons'
 import { copySheet, getFolder, getSheet, listFolders, moveSheet, signedUrl, updateMemo, updateSync } from '../lib/api'
-import { activeLine, eventsOf, withSync, type Folder, type Stepsheet } from '../lib/types'
+import { activeLine, eventsOf, savedBpm, withSync, type Folder, type Stepsheet } from '../lib/types'
 import { bpmFromEvents, defaultEvents } from '../lib/sync'
 import { useMedia, usePrefs } from '../lib/prefs'
 
@@ -82,7 +82,7 @@ export default function SheetPage() {
   const savedEvents = eventsOf(sheet.sync, playingYt ? 'yt' : 'file')
   const hasSaved = savedEvents.length > 0
   // 유튜브는 저장된 게 없어도 "영상 시작과 동시에 1번 줄"을 기본으로 보여 줌
-  const events = hasSaved ? savedEvents : playingYt ? defaultEvents(sheet, bpmFromEvents(sheet, eventsOf(sheet.sync, 'file'))) : []
+  const events = hasSaved ? savedEvents : playingYt ? defaultEvents(sheet, savedBpm(sheet.sync) ?? bpmFromEvents(sheet, eventsOf(sheet.sync, 'file'))) : []
   const hasSync = events.length > 0
   const activeIndex = hasPlayer && hasSync ? activeLine(events, t) : undefined
   const onLine = (i: number) => {

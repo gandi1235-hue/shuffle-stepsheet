@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import SongList from '../components/SongList'
 import TopBar from '../components/TopBar'
 import { Chat, Edit, People, Plus, Search } from '../components/Icons'
-import { getFolder, listSongs, type SongWithSheets } from '../lib/api'
+import { getFolder, listSongs, type SongWithSheets, unreadCounts } from '../lib/api'
 import { stepNames, type Folder } from '../lib/types'
 
 export default function FolderPage() {
@@ -13,9 +13,11 @@ export default function FolderPage() {
   const [songs, setSongs] = useState<SongWithSheets[]>([])
   const [q, setQ] = useState('')
   const [err, setErr] = useState('')
+  const [unread, setUnread] = useState(0)
 
   useEffect(() => {
     getFolder(id).then(setFolder).catch((e) => setErr(e.message))
+    unreadCounts([id]).then((m) => setUnread(m.get(id) ?? 0))
     listSongs(id).then(setSongs).catch((e) => setErr(e.message))
   }, [id])
 
@@ -42,8 +44,8 @@ export default function FolderPage() {
           <span className="row-btns">
             {folder?.kind === 'shared' && (
               <>
-                <Link to={`/folder/${id}/chat`} className="btn pill" style={{ minHeight: 38 }}>
-                  <Chat /> 톡
+                <Link to={`/folder/${id}/chat`} className="btn pill" style={{ minHeight: 38, position: 'relative' }}>
+                  <Chat /> 톡{unread > 0 && <span className="badge inline" style={{ marginLeft: 4 }}>{unread}</span>}
                 </Link>
                 <Link to={`/folder/${id}/members`} className="btn pill" style={{ minHeight: 38 }}>
                   <People /> 멤버

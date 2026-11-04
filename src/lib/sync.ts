@@ -39,12 +39,25 @@ export function fillEvents(sheet: Lines, plan: PlanItem[], t0: number, rate: num
   }
   return out.sort((a, b) => a.t - b.t)
 }
-/** 사건 목록에서 박자 짐작 (첫 두 사건 간격). 못 구하면 기본값 */
+/** 셔플 곡 범위(90~180)로 접기: 너무 느리면 두 배, 너무 빠르면 절반 (16박을 8박으로 적는 등 두 배 오차 보정) */
+export function foldBpm(v: number): number {
+  let x = v
+  while (x > 0 && x < 90) x *= 2
+  while (x > 180) x /= 2
+  return Math.max(60, Math.min(200, Math.round(x * 10) / 10))
+}
+/** 사건 목록에서 박자 짐작: 줄 간격마다 (박수×60/간격)을 구해 중간값. 한 줄만 눌러 틀린 경우에 휘둘리지 않음 */
 export function bpmFromEvents(sheet: Lines, events: SyncEvent[]): number {
-  if (events.length < 2) return DEFAULT_BPM
-  const [a, b] = events
-  if (b.t <= a.t + 0.3) return DEFAULT_BPM
-  return Math.max(60, Math.min(200, Math.round(((lineBeats(sheet, a.line) * 60) / (b.t - a.t)) * 10) / 10))
+  const rates: number[] = []
+  for (let k = 0; k + 1 < events.length; k++) {
+    const a = events[k]
+    const b = events[k + 1]
+    if (b.t <= a.t + 0.3) continue
+    rates.push(foldBpm((lineBeats(sheet, a.line) * 60) / (b.t - a.t)))
+  }
+  if (!rates.length) return DEFAULT_BPM
+  rates.sort((x, y) => x - y)
+  return rates[Math.floor(rates.length / 2)]
 }
 /** 유튜브 기본값: 영상 시작(0초)과 동시에 1번 줄, 스텝지 순서대로 */
 export function defaultEvents(sheet: Lines, rate: number): SyncEvent[] {
