@@ -722,7 +722,10 @@ a.msg-who { display: block; }
 .card-emoji { font-size: 84px; line-height: 1; filter: drop-shadow(0 6px 12px rgba(0,0,0,0.25)); }
 .card-no { position: absolute; top: 12px; right: 14px; font-size: 12.5px; font-weight: 700; background: rgba(0,0,0,0.25); padding: 2px 9px; border-radius: 999px; }
 .onboard.card-news h2 { margin: 10px 20px 0; font-size: 23px; letter-spacing: -0.01em; }
-.onboard.card-news p { margin: 0 22px; min-height: 76px; font-size: 16px; }
+.onboard.card-news p { margin: 0 22px; min-height: 76px; font-size: 16px; text-align: left; }
+.onboard.card-news h2, .onboard.card-news p, .onboard.card-news .card-tips li { word-break: keep-all; overflow-wrap: break-word; }
+mark.hl { background: linear-gradient(transparent 40%, #ffe66d 40%); color: inherit; font-weight: 700; padding: 0 1px; border-radius: 2px; }
+html[data-theme="netflix"] mark.hl { background: linear-gradient(transparent 40%, #ffd84d 40%); }
 .onboard.card-news .onboard-actions { padding: 0 18px; box-sizing: border-box; }
 .onboard.card-news .dots { margin: 2px 0 6px; }
 .onboard.card-news.hot { box-shadow: 0 0 0 3px var(--accent), var(--shadow-float); }
