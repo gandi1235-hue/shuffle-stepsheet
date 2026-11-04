@@ -247,7 +247,8 @@ h1, h2, h3 { letter-spacing: -0.015em; }
 .install .btn.primary { background: #fff; border-color: #fff; color: var(--accent-ink); box-shadow: none; padding: 0 14px; }
 
 /* ── 스텝지 화면: 한 화면에 맞춤 ── */
-.sheet-screen { height: calc(100vh / var(--zoom, 1)); height: calc(100dvh / var(--zoom, 1)); overflow: hidden; }
+/* zoom 적용 시 vh가 zoom배로 커져서 zoom²로 나눠야 실제 화면 높이가 됨 */
+.sheet-screen { height: calc(100vh / var(--zoom, 1) / var(--zoom, 1)); height: calc(100dvh / var(--zoom, 1) / var(--zoom, 1)); overflow: hidden; }
 .sheet-screen .content { overflow-y: auto; }
 .fit { flex: 1; min-height: 0; padding: 12px 14px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .fit-wrap { width: 100%; position: relative; }
