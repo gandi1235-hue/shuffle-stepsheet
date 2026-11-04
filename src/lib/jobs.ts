@@ -4,7 +4,7 @@
  */
 import type { SyncSource } from './types'
 
-export type LocalJob = { id: string; sheetId: string; kind: 'video_sync'; src: SyncSource; bpm: number; title: string; started: number }
+export type LocalJob = { id: string; sheetId: string; kind: 'video_sync'; src: SyncSource; bpm: number; sure?: boolean; title: string; started: number } // sure: bpm이 믿을 만한 값인지(음원 분석·직접 찍음)
 const KEY = 'ai-jobs'
 /** 작업이 끝나 적용됐을 때 창에 알리는 이벤트 (detail: { sheetId, jobId }) */
 export const JOB_EVENT = 'ai-job-done'

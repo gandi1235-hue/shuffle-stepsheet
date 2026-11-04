@@ -36,10 +36,10 @@ export default function JobWatcher() {
         const sheet = await getSheet(j.sheetId)
         if (!sheet) return
         const r = parsePlan(job.result, sheet.lines.length)
-        const out = planFromReply(sheet, r, j.bpm, 0)
+        const out = planFromReply(sheet, r, j.bpm, 0, { sure: j.sure === true })
         if (!out) return toast(`${j.title}: ${r.unclear || '영상에서 스텝 시작을 찾지 못했어요'}`)
         await updateSync(sheet.id, withSync(sheet.sync, j.src, out.events, out.rate, out.plan))
-        toast(`🎬 ${j.title} 영상 보고 맞춘 동기화를 저장했어요${r.note ? ` · ${r.note}` : ''}`)
+        toast(`🎬 ${j.title} 영상 보고 맞춘 동기화를 저장했어요${r.note ? ` · ${r.note}` : ''}${out.snapped ? ` · ${out.rate} BPM 격자에 맞춤` : ''}`)
         window.dispatchEvent(new CustomEvent(JOB_EVENT, { detail: { sheetId: j.sheetId, jobId: j.id } }))
       } catch (e) {
         toast(`${j.title} 결과를 저장하지 못했어요: ${(e as Error).message}`)

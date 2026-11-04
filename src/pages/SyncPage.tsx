@@ -56,6 +56,7 @@ export default function SyncPage() {
   const [stamps, setStamps] = useState<number[] | null>(null) // 8박마다 찍기 중이면 찍은 시각들
   const [manual, setManual] = useState(false) // 수동 교정 도구(여기부터·BPM·박자 찍기 등) 펼침
   const touched = useRef(false) // 사용자가 줄을 직접 고쳤는지 (분석이 늦게 끝나도 덮어쓰지 않으려고)
+  const bpmSure = useRef(false) // 박자가 믿을 만한지(음원 분석 성공·8박 찍기·손으로 고침·저장값). 아니면 AI에게 박자를 안 알려 주고 스스로 재게 함
 
   useEffect(() => {
     getSheet(id)
@@ -103,6 +104,7 @@ export default function SyncPage() {
     setOrderNote('')
     if (saved.length) {
       const rate = savedBpm(s.sync) ?? bpmFromEvents(s, saved)
+      bpmSure.current = savedBpm(s.sync) !== null
       setEvents(saved)
       setPlan(savedPlan(s.sync, src) ?? planOf(s, saved, rate))
       setBpm(rate)
@@ -111,6 +113,7 @@ export default function SyncPage() {
     } else if (src === 'yt') {
       // 유튜브 기본값: 영상 시작과 동시에 1번 줄. 박자는 음원용 동기화가 있으면 거기서, 없으면 기본값
       const rate = savedBpm(s.sync) ?? tp?.bpm ?? bpmFromEvents(s, eventsOf(s.sync, 'file'))
+      bpmSure.current = savedBpm(s.sync) !== null || (!!tp && tp.confidence >= 0.25)
       setBpm(rate)
       setPlan(defaultPlan(s))
       setEvents(fillEvents(s, defaultPlan(s), 0, rate))
@@ -121,6 +124,7 @@ export default function SyncPage() {
       setPlan(defaultPlan(s))
       setPhase('first')
       touched.current = false
+      bpmSure.current = !!tp && tp.confidence >= 0.25
     }
   }
   const setSource = (v: 'file' | 'youtube') => {
@@ -140,6 +144,7 @@ export default function SyncPage() {
       if (!r) return setAnalysis('failed')
       setTempo(r)
       setAnalysis(r.confidence >= 0.25 ? 'done' : 'weak')
+      if (r.confidence >= 0.25) bpmSure.current = true
       if (!touched.current) setBpm(r.bpm)
     } catch {
       setAnalysis('failed')
@@ -194,6 +199,7 @@ export default function SyncPage() {
     setBpm(rate)
     if (events.length) push(fillEvents(sheet, plan, events[0].t, rate))
     touched.current = true
+    bpmSure.current = true
   }
   /**
    * 교정: 줄을 누른 그 순간이 그 줄의 시작이 됨. 박자(BPM)와 줄 박수는 그대로 두고 시작 위치만 옮기므로
@@ -301,17 +307,18 @@ export default function SyncPage() {
         setWatching('AI에게 음악을 들려주는 중…')
         src = { audio: { media_type: mime, data: b64 } }
       } else throw new Error('음원 파일이나 유튜브 링크가 있어야 AI가 맞출 수 있어요')
-      const r = await videoSync(sheet.id, src, orderPromptLines(sheet), bpm, req)
+      // 박자를 확실히 알 때만 AI에게 알려 줌. 기본값(128)을 아는 척 보내면 AI가 엉뚱한 격자에 맞춰 버림
+      const r = await videoSync(sheet.id, src, orderPromptLines(sheet), bpmSure.current ? bpm : 0, req)
       if ('jobId' in r) {
         // 서버에서 이어서 돎: 화면을 떠나거나 앱을 꺼도 끝나면 저장되고 알려 줌
-        addJob({ id: r.jobId, sheetId: sheet.id, kind: 'video_sync', src: playingYt ? 'yt' : 'file', bpm, title: sheet.song?.title ?? '스텝지', started: Date.now() })
+        addJob({ id: r.jobId, sheetId: sheet.id, kind: 'video_sync', src: playingYt ? 'yt' : 'file', bpm, sure: bpmSure.current, title: sheet.song?.title ?? '스텝지', started: Date.now() })
         setJobId(r.jobId)
         setWatching('')
         setAskOpen(false)
         toast(`AI가 ${req ? '요청을 읽고 ' : ''}${playingYt || fileIsVideo ? '영상을 보고' : '음악을 듣고'} 있어요 (1~3분). 다른 화면에 가 있어도 끝나면 저장되고 알려 드려요`)
         return
       }
-      const out = planFromReply(sheet, r, bpm, events[0]?.t ?? 0)
+      const out = planFromReply(sheet, r, bpm, events[0]?.t ?? 0, { sure: bpmSure.current, phase: !playingYt && tempo ? tempo.phase : null })
       if (!out) throw new Error(r.unclear || '영상에서 스텝 시작을 찾지 못했어요')
       setPlan(out.plan)
       setOrderNote(r.note)
@@ -321,7 +328,7 @@ export default function SyncPage() {
       touched.current = true
       setAskOpen(false)
       haptic([15, 60, 15])
-      toast(`AI가 맞췄어요${r.note ? ` · ${r.note}` : ''}. 틀린 줄은 그 줄이 시작될 때 눌러 고치세요`)
+      toast(`AI가 맞췄어요${r.note ? ` · ${r.note}` : ''}${out.snapped ? ` · ${out.rate} BPM 격자에 맞춤` : ''}. 틀린 줄은 그 줄이 시작될 때 눌러 고치세요`)
     } catch (e) {
       toast((e as Error).message)
     } finally {
@@ -353,6 +360,7 @@ export default function SyncPage() {
         gaps.sort((a, b) => a - b)
         rate = foldBpm((8 * 60) / gaps[Math.floor(gaps.length / 2)])
         setBpm(rate)
+        bpmSure.current = true
       }
     }
     const next = unpinned(plan)

@@ -201,14 +201,96 @@ export function planFromReply(
   reply: { plan: PlanItem[]; bpm: number | null; startAt: number | null },
   bpm: number,
   t0: number,
-): { plan: PlanItem[]; events: SyncEvent[]; rate: number } | null {
+  opts: { sure?: boolean; phase?: number | null } = {},
+): { plan: PlanItem[]; events: SyncEvent[]; rate: number; snapped: boolean } | null {
   const idx = stepIdxOf(sheet)
   const plan = reply.plan
     .map((p): PlanItem | null => (isRest(p) ? p : idx[p.line - 1] === undefined ? null : { ...p, line: idx[p.line - 1] }))
     .filter((p): p is PlanItem => p !== null)
   if (!planLines(plan).length) return null
-  const rate = reply.bpm && reply.bpm >= 60 && reply.bpm <= 200 ? reply.bpm : bpm
+  const aiRate = reply.bpm && reply.bpm >= 60 && reply.bpm <= 200 ? reply.bpm : null
+  // 박자: 믿을 만한 값(음원 분석·직접 찍음·손으로 고침)이 있으면 그것, 없으면 AI가 찾은 줄별 시각들로 정밀하게 재고, 그것도 안 되면 AI 짐작값
+  const fit = fitBpm(sheet, plan)
+  const sure = opts.sure === true && bpm >= 60 && bpm <= 200
+  const rate = sure ? bpm : fit ? fit.bpm : (aiRate ?? bpm)
+  const snapped = sure || !!fit
   const first = plan.find((p): p is { line: number; at?: number } => !isRest(p) && typeof p.at === 'number')
-  const start = reply.startAt !== null && reply.startAt >= 0 ? reply.startAt : (first?.at ?? t0)
-  return { plan, events: fillEvents(sheet, plan, start, rate), rate }
+  let start = reply.startAt !== null && reply.startAt >= 0 ? reply.startAt : (first?.at ?? t0)
+  // 음원 분석으로 박 위치(phase)까지 알면 시작도 실제 박 위에 올림
+  if (sure && typeof opts.phase === 'number') {
+    const P = 60 / rate
+    const near = opts.phase + Math.round((start - opts.phase) / P) * P
+    if (Math.abs(near - start) <= 0.25) start = r1(near)
+  }
+  const plan2 = snapped ? snapPlan(sheet, plan, start, rate) : plan
+  return { plan: plan2, events: fillEvents(sheet, plan2, start, rate), rate, snapped }
+}
+/**
+ * AI가 찾은 줄별 시작 시각(at)들로 박자를 정밀하게 재기: 누적 박수 대 시각의 직선 기울기(최소제곱).
+ * 크게 벗어난 점(반복·쉼을 AI가 다르게 본 줄)은 한 번 빼고 다시 잰다. 점이 4개 미만이거나 들쭉날쭉하면 null
+ */
+export function fitBpm(sheet: Lines, plan: PlanItem[]): { bpm: number; err: number } | null {
+  const pts: [number, number][] = [] // [누적 박, 시각]
+  let cum = 0
+  for (const p of plan) {
+    if (isRest(p)) {
+      cum += p.rest
+      continue
+    }
+    if (typeof p.at === 'number' && p.at >= 0) pts.push([cum, p.at])
+    cum += p.beats && p.beats > 0 ? p.beats : lineBeats(sheet, p.line)
+  }
+  const fit = (ps: [number, number][]) => {
+    const n = ps.length
+    const mx = ps.reduce((s, [x]) => s + x, 0) / n
+    const my = ps.reduce((s, [, y]) => s + y, 0) / n
+    let sxx = 0
+    let sxy = 0
+    for (const [x, y] of ps) {
+      sxx += (x - mx) ** 2
+      sxy += (x - mx) * (y - my)
+    }
+    if (sxx <= 0) return null
+    const slope = sxy / sxx // 한 박의 초
+    const b = my - slope * mx
+    const res = ps.map(([x, y]) => Math.abs(y - (b + slope * x)))
+    const err = [...res].sort((a, c) => a - c)[Math.floor(res.length / 2)]
+    return { slope, res, err }
+  }
+  let ps = pts
+  if (ps.length < 4 || ps[ps.length - 1][0] - ps[0][0] < 16) return null
+  let f = fit(ps)
+  if (!f) return null
+  const keep = ps.filter((_, i) => f!.res[i] <= Math.max(1.0, f!.err * 3))
+  if (keep.length >= 4 && keep.length < ps.length) {
+    ps = keep
+    f = fit(ps) ?? f
+  }
+  if (f.slope <= 0 || f.err > 0.35) return null
+  const bpm = 60 / f.slope
+  if (bpm < 60 || bpm > 200) return null
+  return { bpm: Math.round(bpm * 10) / 10, err: Math.round(f.err * 100) / 100 }
+}
+/**
+ * AI가 찾은 줄별 시각을 박자 격자에 맞춰 다듬기. 격자(시작 + 누적 박 × 한 박)에서 한 박 이내면 격자 시각으로,
+ * 더 멀면(AI가 반복·쉼·멈춤을 본 곳) 가장 가까운 박으로 옮기고 거기서부터 다시 격자로 이어 감
+ */
+export function snapPlan(sheet: Lines, plan: PlanItem[], start: number, rate: number): PlanItem[] {
+  const beat = 60 / rate
+  let cur = start
+  return plan.map((p): PlanItem => {
+    if (isRest(p)) {
+      cur += p.rest * beat
+      return p
+    }
+    const beats = p.beats && p.beats > 0 ? p.beats : lineBeats(sheet, p.line)
+    if (typeof p.at === 'number' && p.at >= 0) {
+      if (Math.abs(p.at - cur) > beat) cur = start + Math.round((p.at - start) / beat) * beat
+      const out = { ...p, at: Math.round(cur * 100) / 100 }
+      cur += beats * beat
+      return out
+    }
+    cur += beats * beat
+    return p
+  })
 }
