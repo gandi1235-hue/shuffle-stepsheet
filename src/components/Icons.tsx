@@ -48,3 +48,5 @@ export const Brand = ({ size = 26 }: { size?: number }) => (
     </span>
   </span>
 )
+export const LayoutTop = () => <svg {...base}><rect x="3" y="4" width="18" height="7" rx="2" /><path d="M3 15h18M3 19h12" /></svg>
+export const LayoutSide = () => <svg {...base}><rect x="3" y="5" width="10" height="14" rx="2" /><path d="M16 7h5M16 11h5M16 15h5" /></svg>

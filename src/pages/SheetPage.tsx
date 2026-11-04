@@ -5,10 +5,11 @@ import YouTubePlayer, { youtubeId } from '../components/YouTubePlayer'
 import SheetTable from '../components/SheetTable'
 import TopBar from '../components/TopBar'
 import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
-import { Copy, Doc, Edit, More, Photo, Print, Share } from '../components/Icons'
+import { Copy, Doc, Edit, LayoutSide, LayoutTop, More, Photo, Print, Share } from '../components/Icons'
 import { copySheet, getFolder, getSheet, listFolders, moveSheet, signedUrl, updateMemo, updateSync } from '../lib/api'
 import { activeLine, eventsOf, withSync, type Folder, type Stepsheet } from '../lib/types'
 import { bpmFromEvents, defaultEvents } from '../lib/sync'
+import { useMedia, usePrefs } from '../lib/prefs'
 
 export default function SheetPage() {
   const { id = '' } = useParams()
@@ -22,6 +23,10 @@ export default function SheetPage() {
   const [menu, setMenu] = useState<null | 'more' | 'copy' | 'move'>(null)
   const [docView, setDocView] = useState(false)
   const [folders, setFolders] = useState<Folder[]>([])
+  const [prefs, updatePrefs] = usePrefs()
+  const wide = useMedia('(min-width: 900px)')
+  /** 영상 배치: 고른 게 없으면 넓은 화면에서만 좌우 */
+  const sideLayout = prefs.videoLayout ? prefs.videoLayout === 'side' : wide
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const toast = useToast()
@@ -157,11 +162,17 @@ export default function SheetPage() {
           {hasSaved ? '동기화 교정' : playingYt ? '동기화 맞추기' : '노래 동기화'}
         </button>
       )}
+      {withVideo && (
+        <button type="button" className="btn layout" onClick={() => updatePrefs({ videoLayout: sideLayout ? 'top' : 'side' })} aria-label={sideLayout ? '영상을 위로' : '영상을 옆으로'} title={sideLayout ? '위아래로 보기' : '좌우로 보기'}>
+          {sideLayout ? <LayoutTop /> : <LayoutSide />}
+          <span>{sideLayout ? '위아래' : '좌우'}</span>
+        </button>
+      )}
     </>
   )
 
   return (
-    <div className={withVideo ? 'screen sheet-screen with-video' : 'screen sheet-screen'}>
+    <div className={withVideo ? `screen sheet-screen with-video ${sideLayout ? 'side' : 'top'}` : 'screen sheet-screen'}>
       <TopBar
         title={sheet.song?.title ?? ''}
         sub={`${sheet.creator_name}${folder ? ` · ${folder.name}` : ''}`}

@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 
 export type FontSize = 'normal' | 'large' | 'xlarge'
+export type VideoLayout = 'top' | 'side'
 export interface Prefs {
   font: FontSize
   contrast: boolean
+  /** 영상과 스텝 배치: 위아래 / 좌우. 없으면 화면 너비에 따라 자동 */
+  videoLayout?: VideoLayout
 }
 const KEY = 'prefs'
 const DEFAULT: Prefs = { font: 'normal', contrast: false }
@@ -56,4 +59,16 @@ export function haptic(ms: number | number[] = 12) {
   } catch {
     /* 무시 */
   }
+}
+
+/** 미디어 쿼리 값(바뀌면 다시 그림) */
+export function useMedia(q: string): boolean {
+  const [m, setM] = useState(() => window.matchMedia(q).matches)
+  useEffect(() => {
+    const mq = window.matchMedia(q)
+    const on = () => setM(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [q])
+  return m
 }
