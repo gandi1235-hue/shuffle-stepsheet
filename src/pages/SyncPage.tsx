@@ -5,7 +5,7 @@ import YouTubePlayer, { youtubeId } from '../components/YouTubePlayer'
 import SheetTable from '../components/SheetTable'
 import TopBar from '../components/TopBar'
 import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
-import { getFolder, getSheet, planRequest, signedUrl, updateSync, videoSync } from '../lib/api'
+import { getFolder, getSheet, planRequest, signedUrl, updateSync, videoSync, type AiSyncSrc } from '../lib/api'
 import { haptic } from '../lib/prefs'
 import { useSpeech } from '../lib/speech'
 import { detectTempo, snapToBeat, type Tempo } from '../lib/tempo'
@@ -52,6 +52,7 @@ export default function SyncPage() {
   const [watching, setWatching] = useState('') // 영상 보고 맞추기 진행 상태 글 ('' = 안 하는 중)
   const [jobId, setJobId] = useState<string | null>(() => jobFor(id)?.id ?? null) // 서버에서 돌고 있는 영상 보고 맞추기
   const [stamps, setStamps] = useState<number[] | null>(null) // 8박마다 찍기 중이면 찍은 시각들
+  const [manual, setManual] = useState(false) // 수동 교정 도구(여기부터·BPM·박자 찍기 등) 펼침
   const touched = useRef(false) // 사용자가 줄을 직접 고쳤는지 (분석이 늦게 끝나도 덮어쓰지 않으려고)
 
   useEffect(() => {
@@ -267,7 +268,7 @@ export default function SyncPage() {
   const watchVideo = async () => {
     if (watching) return
     try {
-      let src: { sheets: { media_type: string; data: string }[]; step: number; duration: number } | { ytUrl: string }
+      let src: AiSyncSrc
       if (playingYt && ytId) {
         // 유튜브는 AI(Gemini)가 영상을 직접 봄 — 서버에서 영상을 내려받지 않음
         setWatching('AI에게 유튜브 영상을 보여 주는 중…')
@@ -277,7 +278,22 @@ export default function SyncPage() {
         const fr = await contactSheets(audio, (d, n) => setWatching(`영상에서 장면 뽑는 중… ${Math.round((d / n) * 100)}%`))
         setWatching(`AI에게 영상 ${fr.frames}장면을 보내는 중…`)
         src = fr
-      } else throw new Error('유튜브 링크나 영상 파일이 있어야 영상을 볼 수 있어요')
+      } else if (hasFile && audio) {
+        // 음악 파일: AI(Gemini)가 음악을 직접 듣고 전주·구절 경계로 맞춤
+        setWatching('음악 파일 읽는 중…')
+        const blob = await (await fetch(audio)).blob()
+        if (blob.size > 14 * 1024 * 1024) throw new Error('음원 파일이 너무 커요 (14MB까지). 유튜브 링크를 넣거나 작은 파일로 바꿔 주세요')
+        const b64 = await new Promise<string>((res, rej) => {
+          const fr = new FileReader()
+          fr.onload = () => res(String(fr.result).split(',')[1] ?? '')
+          fr.onerror = () => rej(new Error('음원을 읽지 못했어요'))
+          fr.readAsDataURL(blob)
+        })
+        const ext = (sheet.audio_path ?? '').split('.').pop()?.toLowerCase() ?? ''
+        const mime = blob.type && blob.type !== 'application/octet-stream' ? blob.type : ({ m4a: 'audio/mp4', mp4: 'audio/mp4', aac: 'audio/aac', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', webm: 'audio/webm', flac: 'audio/flac' } as Record<string, string>)[ext] ?? 'audio/mpeg'
+        setWatching('AI에게 음악을 들려주는 중…')
+        src = { audio: { media_type: mime, data: b64 } }
+      } else throw new Error('음원 파일이나 유튜브 링크가 있어야 AI가 맞출 수 있어요')
       const r = await videoSync(sheet.id, src, orderPromptLines(sheet), bpm)
       if ('jobId' in r) {
         // 서버에서 이어서 돎: 화면을 떠나거나 앱을 꺼도 끝나면 저장되고 알려 줌
@@ -285,7 +301,7 @@ export default function SyncPage() {
         setJobId(r.jobId)
         setWatching('')
         setAskOpen(false)
-        toast('GPT가 영상을 보고 있어요 (1~3분). 다른 화면에 가 있어도 끝나면 저장되고 알려 드려요')
+        toast(`AI가 ${playingYt || fileIsVideo ? '영상을 보고' : '음악을 듣고'} 있어요 (1~3분). 다른 화면에 가 있어도 끝나면 저장되고 알려 드려요`)
         return
       }
       const out = planFromReply(sheet, r, bpm, events[0]?.t ?? 0)
@@ -298,7 +314,7 @@ export default function SyncPage() {
       touched.current = true
       setAskOpen(false)
       haptic([15, 60, 15])
-      toast(`영상을 보고 맞췄어요${r.note ? ` · ${r.note}` : ''}. 틀린 줄은 그 줄이 시작될 때 눌러 고치세요`)
+      toast(`AI가 맞췄어요${r.note ? ` · ${r.note}` : ''}. 틀린 줄은 그 줄이 시작될 때 눌러 고치세요`)
     } catch (e) {
       toast((e as Error).message)
     } finally {
@@ -308,7 +324,7 @@ export default function SyncPage() {
   const cancelJob = () => {
     if (jobId) removeJob(jobId)
     setJobId(null)
-    toast('영상 보고 맞추기를 취소했어요')
+    toast('AI 맞추기를 취소했어요')
   }
   /**
    * 8박마다 찍기: 노래를 들으며 한 구절(8박)이 시작될 때마다 누른다. 처음 찍은 순간이 1번 줄 시작,
@@ -397,21 +413,7 @@ export default function SyncPage() {
           지금 순서: {orderText}
           {orderNote ? ` · ${orderNote}` : ''}
         </div>
-        <DeepToggle note="빠른 모델로 바로 맞춰요. 영상 보고 맞추기나 복잡한 요청이면 켜 보세요" />
-        <div className="video-sync">
-          <div className="panel-desc">
-            <b>🎬 영상 보고 맞추기 (고도 추론)</b>
-            <br />
-            {playingYt && ytId
-              ? 'AI(Gemini)가 유튜브 영상을 직접 보고 들으며 줄마다 시작 시각을 찾아요. 1~3분 걸리고, 끝나면 자동 저장돼요. 틀린 줄은 나중에 눌러 고치면 돼요.'
-              : fileIsVideo
-                ? 'AI가 올려 둔 영상을 보고 줄마다 시작 시각을 찾아요. 1~3분 걸려요.'
-                : '유튜브 링크나 영상 파일이 있는 스텝지에서 쓸 수 있어요.'}
-          </div>
-          <button type="button" className="btn" disabled={Boolean(watching) || Boolean(jobId) || asking || !((playingYt && ytId) || fileIsVideo)} onClick={watchVideo}>
-            {watching || '🎬 영상 보고 맞추기'}
-          </button>
-        </div>
+        <DeepToggle note="빠른 모델로 바로 맞춰요. 복잡한 요청이면 켜 보세요" />
         <div className="row-btns" style={{ display: 'flex', gap: 8 }}>
           {orderChanged && (
             <button type="button" className="btn" onClick={resetOrder} disabled={asking}>
@@ -441,21 +443,21 @@ export default function SyncPage() {
             )}
             <div className={`sync-status ${playingYt ? 'na' : analysis}`}>
               {playingYt ? (
-                tempo && analysis === 'done' ? `유튜브 · 음원에서 찾은 박자 ${tempo.bpm} BPM으로 자동 채워요` : `유튜브 · ${Math.round(bpm * 10) / 10} BPM 기준으로 자동 채워요 (틀리면 −/+ 또는 직접 요청)`
+                tempo && analysis === 'done' ? `유튜브 · 음원에서 찾은 박자 ${tempo.bpm} BPM` : `유튜브 · ${Math.round(bpm * 10) / 10} BPM 기준`
               ) : (
                 <>
                   {analysis === 'running' && '박자 분석 중… (몇 초 걸려요)'}
                   {analysis === 'done' && tempo && `박자 자동 인식: ${tempo.bpm} BPM`}
-                  {analysis === 'weak' && tempo && `박자 ${tempo.bpm} BPM (확신 낮음 · 틀리면 −/+ 또는 직접 요청)`}
-                  {analysis === 'failed' && `박자를 못 찾았어요 · ${Math.round(bpm * 10) / 10} BPM 기준으로 채워요 (틀리면 −/+ 또는 직접 요청)`}
-                  {analysis === 'na' && `${Math.round(bpm * 10) / 10} BPM 기준으로 자동 채워요 (틀리면 −/+ 또는 직접 요청)`}
+                  {analysis === 'weak' && tempo && `박자 ${tempo.bpm} BPM (확신 낮음)`}
+                  {analysis === 'failed' && `박자를 못 찾았어요 · ${Math.round(bpm * 10) / 10} BPM 기준`}
+                  {analysis === 'na' && `${Math.round(bpm * 10) / 10} BPM 기준`}
                 </>
               )}
               {orderChanged && <span className="order-chip">순서 {orderText}</span>}
             </div>
             {jobId && (
               <div className="job-chip">
-                🎬 GPT가 영상을 보고 있어요… 끝나면 저장되고 알려 드려요. 다른 화면에 가도 돼요.
+                🤖 AI가 {playingYt || fileIsVideo ? '영상을 보고' : '음악을 듣고'} 있어요… 끝나면 저장되고 알려 드려요. 다른 화면에 가도 돼요.
                 <button type="button" className="btn tiny" onClick={cancelJob}>
                   취소
                 </button>
@@ -485,66 +487,79 @@ export default function SyncPage() {
             <div className="sync-hint">
               {phase === 'first' ? (
                 <>
-                  노래를 틀고 <b>{firstNo}번 줄 동작이 시작되는 순간</b> 아래 버튼을 누르세요. 나머지 줄은 박자로 자동 계산돼요.
+                  <b>🤖 AI로 맞추기</b>를 누르면 AI가 {playingYt || fileIsVideo ? '영상을 보고' : '음악을 듣고'} 줄마다 시작을 찾아요. 1~3분 걸리고 끝나면 자동 저장돼요.
                 </>
               ) : (
                 <>
-                  틀린 줄이 있으면 <b>그 줄이 시작되는 순간 그 줄을 누르세요.</b> 그 순간이 그 줄의 시작이 되고 뒤 줄도 같이 옮겨져요(박자는 그대로). 다 맞으면 저장.
+                  틀린 줄이 있으면 <b>그 줄이 시작되는 순간 그 줄을 누르세요.</b> 뒤 줄도 같이 옮겨져요. 다 맞으면 저장.
                 </>
               )}
             </div>
-            {phase === 'first' ? (
-              <div className="row">
-                <button type="button" className="btn next" onClick={markFirst}>
-                  여기부터 ({firstNo}번 줄 시작)
+            <div className="row">
+              <button type="button" className="btn primary ai-btn" onClick={watchVideo} disabled={Boolean(watching) || Boolean(jobId) || asking}>
+                {watching || (jobId ? 'AI가 맞추는 중…' : '🤖 AI로 맞추기')}
+              </button>
+              <button type="button" className="btn" onClick={() => setAskOpen(true)} disabled={asking}>
+                🎤 말로 요청
+              </button>
+            </div>
+            <div className="row">
+              {phase === 'fix' && (
+                <button type="button" className="btn save" onClick={save} disabled={saving || !canEdit}>
+                  {saving ? '저장 중…' : '동기화 저장'}
                 </button>
-                <button type="button" className="btn ask-btn" onClick={() => setStamps([])}>
-                  박자
-                  <br />
-                  찍기
-                </button>
-                <button type="button" className="btn ask-btn" onClick={() => setAskOpen(true)}>
-                  직접
-                  <br />
-                  요청
-                </button>
+              )}
+              <button type="button" className={manual ? 'btn more on' : 'btn more'} onClick={() => setManual((v) => !v)} aria-expanded={manual}>
+                {manual ? '간단히 ▴' : '직접 고치기 ▾'}
+              </button>
+            </div>
+            {manual && (
+              <div className="manual-box">
+                <DeepToggle note="AI로 맞출 때 더 깊이 생각해요 (느리지만 정확)" />
+                {phase === 'first' ? (
+                  <>
+                    <div className="sync-hint">
+                      노래를 틀고 <b>{firstNo}번 줄 동작이 시작되는 순간</b> 누르세요. 나머지 줄은 박자로 자동 계산돼요.
+                    </div>
+                    <div className="row">
+                      <button type="button" className="btn next" onClick={markFirst}>
+                        여기부터 ({firstNo}번 줄 시작)
+                      </button>
+                      <button type="button" className="btn" onClick={() => setStamps([])}>
+                        박자 찍기
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="row">
+                      <div className="bpm">
+                        <button type="button" className="btn" aria-label="느린 박자" onClick={() => changeBpm(bpm - 0.5)}>
+                          −
+                        </button>
+                        <span>
+                          {Math.round(bpm * 10) / 10}
+                          <small>BPM</small>
+                        </span>
+                        <button type="button" className="btn" aria-label="빠른 박자" onClick={() => changeBpm(bpm + 0.5)}>
+                          +
+                        </button>
+                      </div>
+                    </div>
+                    <div className="row">
+                      <button type="button" className="btn" onClick={() => setStamps([])}>
+                        박자 찍기
+                      </button>
+                      <button type="button" className="btn" onClick={undo} disabled={!history.length}>
+                        되돌리기
+                      </button>
+                      <button type="button" className="btn" onClick={restart}>
+                        처음부터
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
-            ) : (
-              <>
-                <div className="row">
-                  <div className="bpm">
-                    <button type="button" className="btn" aria-label="느린 박자" onClick={() => changeBpm(bpm - 0.5)}>
-                      −
-                    </button>
-                    <span>
-                      {Math.round(bpm * 10) / 10}
-                      <small>BPM</small>
-                    </span>
-                    <button type="button" className="btn" aria-label="빠른 박자" onClick={() => changeBpm(bpm + 0.5)}>
-                      +
-                    </button>
-                  </div>
-                </div>
-                <div className="row">
-                  <button type="button" className="btn" onClick={() => setAskOpen(true)}>
-                    직접 요청
-                  </button>
-                  <button type="button" className="btn" onClick={() => setStamps([])}>
-                    박자 찍기
-                  </button>
-                  <button type="button" className="btn" onClick={undo} disabled={!history.length}>
-                    되돌리기
-                  </button>
-                  <button type="button" className="btn" onClick={restart}>
-                    처음부터
-                  </button>
-                </div>
-                <div className="row">
-                  <button type="button" className="btn save" onClick={save} disabled={saving || !canEdit}>
-                    {saving ? '저장 중…' : '동기화 저장'}
-                  </button>
-                </div>
-              </>
             )}
             </>
             )}

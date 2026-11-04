@@ -565,10 +565,11 @@ export async function planRequest(lines: string[], request: string): Promise<Pla
  * 영상 보고 맞추기(고도 추론): 영상에서 뽑은 장면표(시각이 적힌 프레임 격자)를 AI가 보고 줄마다 시작 시각을 찾아 계획으로.
  * 영상은 올리지 않고 장면표 그림만 보낸다. 1~3분 걸릴 수 있다.
  */
-export async function videoSync(sheetId: string, src: { sheets: { media_type: string; data: string }[]; step: number; duration: number } | { ytUrl: string }, lines: string[], bpm: number): Promise<{ jobId: string } | PlanReply> {
-  const video_sync = 'ytUrl' in src ? { yt_url: src.ytUrl, bpm } : { frames: src.sheets, step: src.step, duration: src.duration, bpm }
+export type AiSyncSrc = { sheets: { media_type: string; data: string }[]; step: number; duration: number } | { ytUrl: string } | { audio: { media_type: string; data: string } }
+export async function videoSync(sheetId: string, src: AiSyncSrc, lines: string[], bpm: number): Promise<{ jobId: string } | PlanReply> {
+  const video_sync = 'ytUrl' in src ? { yt_url: src.ytUrl, bpm } : 'audio' in src ? { audio: src.audio, bpm } : { frames: src.sheets, step: src.step, duration: src.duration, bpm }
   const { data, error } = await supabase.functions.invoke('recognize', { body: { video_sync, lines, deep: deepAi(), async: true, sheet_id: sheetId } })
-  if (error) throw new Error('영상을 읽지 못했어요. 영상이 길면 시간이 모자랄 수 있어요. 한 번 더 해 보세요.')
+  if (error) throw new Error('AI가 영상·음악을 읽지 못했어요. 파일이 크면 시간이 모자랄 수 있어요. 한 번 더 해 보세요.')
   if (data?.error) throw new Error(data.error)
   if (typeof data?.job_id === 'string') return { jobId: data.job_id }
   return parsePlan(data, lines.length)
