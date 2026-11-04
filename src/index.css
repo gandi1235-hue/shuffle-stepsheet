@@ -33,6 +33,36 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── 테마: 넷플릭스풍 (검정 + 빨강, 원래 디자인) ── */
+html[data-theme="netflix"] {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --fg: #0f172a;
+  --muted: #475569;
+  --faint: #8a94a6;
+  --line: #e7e9ee;
+  --line-strong: #d3d7df;
+  --soft: #eef0f4;
+  --panel: #f7f8fa;
+  --accent: #e50914;
+  --accent-dark: #b81d24;
+  --accent-soft: #fdecec;
+  --accent-ink: #a3080f;
+  --grad: linear-gradient(150deg, #e50914 0%, #c40812 55%, #b81d24 100%);
+  --grad-dark: linear-gradient(150deg, #0a0a0b 0%, #161618 55%, #232327 100%);
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 14px -6px rgba(15, 23, 42, 0.08);
+  --shadow-float: 0 10px 28px -8px rgba(229, 9, 20, 0.45), 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+html[data-theme="netflix"] .brandmark-ico { background: linear-gradient(135deg, #2a2a2e, #050506); box-shadow: 0 2px 6px rgba(0,0,0,0.35); }
+html[data-theme="netflix"] .hero .brandmark-word b, html[data-theme="netflix"] .install .brandmark-word b { color: var(--accent); }
+html[data-theme="netflix"] .hero .search { box-shadow: 0 8px 20px -10px rgba(15, 23, 42, 0.35); }
+html[data-theme="netflix"] .btn.primary { box-shadow: 0 8px 18px -8px rgba(229, 9, 20, 0.5); }
+html[data-theme="netflix"] .player .play { box-shadow: 0 6px 14px -6px rgba(229, 9, 20, 0.6); }
+html[data-theme="netflix"] .login .mark { background: var(--grad-dark); color: var(--accent); }
+html[data-theme="netflix"] .form-body .no { color: var(--dim, #8a94a6); }
+html[data-theme="netflix"] .form-body .line.now { background: #fff8e1; }
+html[data-theme="netflix"] .content.follow .form-body .line.now { background: #fff3c4; }
+
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; min-height: 100%; }
 body { background: var(--bg); }
@@ -500,6 +530,11 @@ html[data-contrast="high"] .btn, html[data-contrast="high"] .card, html[data-con
 .seg .sample.normal { font-size: 20px; }
 .seg .sample.large { font-size: 26px; }
 .seg .sample.xlarge { font-size: 32px; }
+.seg.two { grid-template-columns: 1fr 1fr; }
+.seg small { font-size: 11.5px; font-weight: 500; opacity: 0.8; }
+.seg .swatch { width: 44px; height: 26px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.08); }
+.seg .swatch.rose { background: linear-gradient(135deg, #faf5f3 0 45%, #d9376e 45%); }
+.seg .swatch.netflix { background: linear-gradient(135deg, #0a0a0b 0 45%, #e50914 45%); }
 .switch-row { display: flex; align-items: center; gap: 12px; cursor: pointer; }
 .switch-row > span:first-child { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .switch-row b { font-size: 15px; }

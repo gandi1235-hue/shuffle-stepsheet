@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 
 export type FontSize = 'normal' | 'large' | 'xlarge'
 export type VideoLayout = 'top' | 'side'
+/** 색 테마: rose = 로즈+크림(기본), netflix = 검정+빨강(원래 디자인) */
+export type Theme = 'rose' | 'netflix'
 export interface Prefs {
   font: FontSize
   contrast: boolean
@@ -9,6 +11,8 @@ export interface Prefs {
   videoLayout?: VideoLayout
   /** AI 고급 추론: 켜면 가장 좋은 모델로 오래 생각(느리지만 똑똑). 기본은 빠른 모델 */
   deepAi?: boolean
+  /** 색 테마. 없으면 rose */
+  theme?: Theme
 }
 const KEY = 'prefs'
 const DEFAULT: Prefs = { font: 'normal', contrast: false }
@@ -34,6 +38,8 @@ export function applyPrefs(p: Prefs) {
   const el = document.documentElement
   el.dataset.font = p.font
   el.dataset.contrast = p.contrast ? 'high' : 'normal'
+  el.dataset.theme = p.theme ?? 'rose'
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', p.theme === 'netflix' ? '#0a0a0b' : '#d9376e')
   zoom = ZOOM[p.font]
   setViewportVar()
   if (!listening) {

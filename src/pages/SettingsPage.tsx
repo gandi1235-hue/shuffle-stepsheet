@@ -7,12 +7,16 @@ import TopBar from '../components/TopBar'
 import HelpButton from '../components/HelpButton'
 import { getProfile, mySheetCount, type Profile } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import { usePrefs, type FontSize } from '../lib/prefs'
+import { usePrefs, type FontSize, type Theme } from '../lib/prefs'
 import { supabase } from '../lib/supabase'
 import { shareApp } from '../lib/share'
 import { resetGuides } from '../lib/tour'
 import { useToast } from '../components/ui'
 
+const THEMES: [Theme, string, string][] = [
+  ['rose', '로즈', '기본 · 분홍'],
+  ['netflix', '넷플릭스풍', '검정 + 빨강'],
+]
 const SIZES: [FontSize, string, string][] = [
   ['normal', '보통', '가'],
   ['large', '크게', '가'],
@@ -64,6 +68,20 @@ export default function SettingsPage() {
             ))}
           </div>
           <div className="panel-desc">스텝지, 목록, 버튼 글자가 모두 함께 커져요.</div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-title">색 테마</div>
+          <div className="seg two" role="radiogroup" aria-label="색 테마">
+            {THEMES.map(([k, label, desc]) => (
+              <button key={k} type="button" role="radio" aria-checked={(prefs.theme ?? 'rose') === k} className={(prefs.theme ?? 'rose') === k ? 'on' : ''} onClick={() => update({ theme: k })}>
+                <span className={`swatch ${k}`} aria-hidden="true" />
+                {label}
+                <small>{desc}</small>
+              </button>
+            ))}
+          </div>
+          <div className="panel-desc">다크모드처럼 이 기기에서만 바뀌어요.</div>
         </section>
 
         <section className="panel">
