@@ -3,7 +3,7 @@ import { configured, supabase } from '../lib/supabase'
 import { Dancer } from '../components/Icons'
 
 const appUrl = () => window.location.href.split('#')[0]
-// Supabase Kakao provider 연결됨 (2026-11)
+// Supabase 'Custom Provider'(OIDC, identifier: kakao)로 연결. 기본 Kakao provider는 이메일 scope를 강제해 개인 앱에서는 KOE205가 남.
 const KAKAO_ENABLED = true
 
 const KakaoMark = () => (
@@ -18,7 +18,7 @@ export default function Login() {
   const [err, setErr] = useState('')
 
   const kakao = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'kakao', options: { redirectTo: appUrl(), scopes: 'profile_nickname' } })
+    const { error } = await supabase.auth.signInWithOAuth({ provider: 'custom:kakao' as 'kakao', options: { redirectTo: appUrl() } })
     if (error) setErr(error.message)
   }
 
