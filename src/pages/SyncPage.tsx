@@ -211,13 +211,17 @@ export default function SyncPage() {
     if (!q) return
     setAsking(true)
     try {
-      const { order: nums, note } = await planOrder(orderPromptLines(sheet), q)
+      const { order: nums, note, startAt, bpm: askedBpm } = await planOrder(orderPromptLines(sheet), q)
       const next = nums.map((n) => stepIdx[n - 1]).filter((l) => l !== undefined)
       if (!next.length) throw new Error('요청을 이해하지 못했어요')
       setOrder(next)
       setOrderNote(note)
-      if (events.length) {
-        push(fillEvents(sheet, next, events[0].t, bpm))
+      const rate = askedBpm && askedBpm >= 60 && askedBpm <= 200 ? askedBpm : bpm
+      if (askedBpm) setBpm(rate)
+      const t0 = startAt !== null && startAt >= 0 ? startAt : events[0]?.t
+      if (typeof t0 === 'number') {
+        push(fillEvents(sheet, next, t0, rate))
+        setPhase('fix')
         touched.current = true
       }
       setAskOpen(false)
