@@ -599,8 +599,10 @@ export default function AddPage() {
         </div>
 
         <div className="field">
-          <label htmlFor="au">음원·영상 파일 (MP3, MP4 등 내가 가진 파일)</label>
+          <label htmlFor="au">음원·영상 파일 (MP3, M4A, MP4, MOV 등 내가 가진 파일)</label>
           <input id="au" type="file" accept="audio/*,video/*" onChange={(e) => setAudioFile(e.target.files?.[0] ?? null)} />
+          <div className="edittip">영상을 올리면 앱 안에서 스텝지와 같이 보고, AI가 영상을 보고 줄을 맞춰요. 인스타 릴스는 폰에 저장한 뒤 올리세요 (파일은 50MB까지).</div>
+          {audioFile && audioFile.size > 50 * 1024 * 1024 && <div className="notice warn">파일이 50MB를 넘어요. 화면 녹화 앱이나 갤러리의 "동영상 자르기·압축"으로 줄여서 올려 주세요.</div>}
         </div>
         <div className="field">
           <label htmlFor="al">유튜브 링크 (파일과 함께 넣어도 돼요 · 앱 안에서 스텝지와 같이 봐요)</label>
@@ -613,7 +615,7 @@ export default function AddPage() {
             <button type="button" className="btn block" onClick={() => nav(`/sheet/${editId}/sync`)} disabled={!hasAudio}>
               {hasSync ? '동기화 교정하기' : '노래와 줄 맞추기 (동기화)'}
             </button>
-            <div className="edittip">{hasAudio ? '재생하면서 1번 줄이 시작될 때 한 번만 누르면, 박자를 분석해 나머지 줄을 자동으로 맞춰요. 틀린 줄만 고치면 돼요.' : '음원 파일이나 유튜브 링크를 넣고 저장한 뒤 동기화할 수 있어요.'}</div>
+            <div className="edittip">{hasAudio ? '"AI로 맞추기"를 누르면 AI가 노래를 듣고(영상은 보고) 줄마다 시작을 찾아요. 틀린 줄만 눌러 고치면 돼요.' : '음원·영상 파일이나 유튜브 링크를 넣고 저장한 뒤 동기화할 수 있어요.'}</div>
           </div>
         )}
 
