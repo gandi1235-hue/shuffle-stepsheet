@@ -66,9 +66,61 @@ export function bpmFromEvents(sheet: Lines, events: SyncEvent[]): number {
   rates.sort((x, y) => x - y)
   return rates[Math.floor(rates.length / 2)]
 }
-/** 유튜브 기본값: 영상 시작(0초)과 동시에 1번 줄, 스텝지 순서대로 */
+/** 줄 글에서 박수: "8박 반복" → 8, "16박" → 16, 없으면 0 */
+const labelBeats = (label?: string) => {
+  const m = (label ?? '').match(/(\d+)\s*박/)
+  return m ? Number(m[1]) : 0
+}
+/**
+ * 스텝지에 적힌 대로의 기본 계획: 스텝 줄은 순서대로, "N박 반복" 줄은 바로 앞 N박만큼의 스텝 줄을 한 번 더,
+ * "처음부터" 반복은 이 구간 처음부터 한 번 더, "N박 쉬기" 줄은 N박 쉼
+ */
+export function defaultPlan(sheet: Lines): PlanItem[] {
+  const out: PlanItem[] = []
+  let sectionStart = 0 // 이 구간이 시작된 out 위치
+  sheet.lines.forEach((l, i) => {
+    const kind = kindOf(l)
+    if (kind === 'steps') {
+      if (l.steps.some((st) => st.name.trim())) out.push({ line: i })
+      return
+    }
+    if (kind === 'section') {
+      sectionStart = out.length
+      return
+    }
+    if (kind === 'rest') {
+      const b = labelBeats(l.label)
+      if (b > 0) out.push({ rest: b })
+      return
+    }
+    if (kind === 'repeat') {
+      const b = labelBeats(l.label)
+      if (b > 0) {
+        // 뒤에서부터 N박이 찰 때까지 되감아 그 줄들을 한 번 더
+        let need = b
+        let k = out.length - 1
+        const again: PlanItem[] = []
+        while (k >= 0 && need > 0) {
+          const p = out[k]
+          again.unshift(p)
+          need -= isRest(p) ? p.rest : p.beats && p.beats > 0 ? p.beats : lineBeats(sheet, p.line)
+          k--
+        }
+        out.push(...again.map((p) => (isRest(p) ? { rest: p.rest } : { line: p.line })))
+      } else if (/처음|전체|다시|한\s*번\s*더/.test(l.label ?? '')) {
+        out.push(...out.slice(sectionStart).map((p) => (isRest(p) ? { rest: p.rest } : { line: p.line })))
+      }
+    }
+  })
+  return out
+}
+/** 두 계획이 같은지 (줄·쉼·길이·고정 시각까지) */
+export function samePlan(a: PlanItem[], b: PlanItem[]) {
+  return a.length === b.length && a.every((p, k) => JSON.stringify(p) === JSON.stringify(b[k]))
+}
+/** 유튜브 기본값: 영상 시작(0초)과 동시에 1번 줄, 스텝지에 적힌 대로(반복·쉬기 포함) */
 export function defaultEvents(sheet: Lines, rate: number): SyncEvent[] {
-  return fillEvents(sheet, linesToPlan(stepIdxOf(sheet)), 0, rate)
+  return fillEvents(sheet, defaultPlan(sheet), 0, rate)
 }
 /** 사건 목록의 줄 순서 (저장된 동기화에서 순서 복원) */
 export function orderOf(events: SyncEvent[]): number[] {
@@ -129,7 +181,10 @@ export function orderPromptLines(sheet: Lines): string[] {
   let section = ''
   const out: string[] = []
   sheet.lines.forEach((l, i) => {
-    if (kindOf(l) === 'section') section = l.label ?? ''
+    const kind = kindOf(l)
+    if (kind === 'section') section = l.label ?? ''
+    if (kind === 'repeat') out.push(`   ↻ 반복 줄: "${l.label ?? ''}"${labelBeats(l.label) ? ` (바로 앞 ${labelBeats(l.label)}박을 한 번 더)` : ''}`)
+    if (kind === 'rest' && labelBeats(l.label)) out.push(`   (쉼: ${labelBeats(l.label)}박)`)
     const k = idx.indexOf(i)
     if (k >= 0) out.push(`${k + 1}. ${section ? `[${section}] ` : ''}${l.steps.map((s) => `${s.name}${s.beats ? ' ' + s.beats : ''}${s.bar ? ' |' : ''}`).join(' / ')} (${lineBeats(sheet, i)}박${beatsGuessed(sheet, i) ? ', 안 적혀 있어 8박으로 추정' : barBeats(l.steps) > 0 && !l.steps.some((s) => beatsOf(s.beats) > 0) ? ', |는 8박 경계' : ''})`)
   })

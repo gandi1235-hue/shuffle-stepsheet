@@ -10,7 +10,7 @@ import { haptic } from '../lib/prefs'
 import { useSpeech } from '../lib/speech'
 import { detectTempo, snapToBeat, type Tempo } from '../lib/tempo'
 import { activeLine, eventsOf, marksFromEvents, savedBpm, savedPlan, withSync, type Folder, type Stepsheet, type SyncEvent, type SyncSource } from '../lib/types'
-import { DEFAULT_BPM, bpmFromEvents, fillEvents, foldBpm, linesToPlan, orderPromptLines, planFromReply, planIndexOfEvent, planLines, planOf, planText, stepIdxOf, unpinned, isRest, type PlanItem } from '../lib/sync'
+import { DEFAULT_BPM, bpmFromEvents, defaultPlan, fillEvents, foldBpm, orderPromptLines, planFromReply, planIndexOfEvent, planLines, planOf, planText, samePlan, stepIdxOf, unpinned, isRest, type PlanItem } from '../lib/sync'
 import { JOB_EVENT, addJob, jobFor, removeJob } from '../lib/jobs'
 import { contactSheets } from '../lib/frames'
 import DeepToggle from '../components/DeepToggle'
@@ -96,7 +96,6 @@ export default function SyncPage() {
   /** 저장된 동기화를 불러와 시작 상태 만들기 */
   const load = (s: Stepsheet, src: SyncSource, tp: Tempo | null) => {
     const saved = eventsOf(s.sync, src)
-    const idx = stepIdxOf(s)
     setHistory([])
     setOrderNote('')
     if (saved.length) {
@@ -110,13 +109,13 @@ export default function SyncPage() {
       // 유튜브 기본값: 영상 시작과 동시에 1번 줄. 박자는 음원용 동기화가 있으면 거기서, 없으면 기본값
       const rate = savedBpm(s.sync) ?? tp?.bpm ?? bpmFromEvents(s, eventsOf(s.sync, 'file'))
       setBpm(rate)
-      setPlan(linesToPlan(idx))
-      setEvents(fillEvents(s, linesToPlan(idx), 0, rate))
+      setPlan(defaultPlan(s))
+      setEvents(fillEvents(s, defaultPlan(s), 0, rate))
       setPhase('fix')
       touched.current = false
     } else {
       setEvents([])
-      setPlan(linesToPlan(idx))
+      setPlan(defaultPlan(s))
       setPhase('first')
       touched.current = false
     }
@@ -171,7 +170,7 @@ export default function SyncPage() {
   const marks = marksFromEvents(events, sheet.lines.length)
   const orderText = planText(sheet, plan)
   const order = planLines(plan)
-  const orderChanged = plan.length !== stepIdx.length || order.some((l, k) => l !== stepIdx[k]) || plan.some((p) => 'rest' in p || p.beats || p.at !== undefined)
+  const orderChanged = !samePlan(plan, defaultPlan(sheet))
 
   const now = () => player.current?.time() ?? 0
   const push = (ev: SyncEvent[]) => {
@@ -342,9 +341,9 @@ export default function SyncPage() {
     toast(st.length >= 2 ? `${st.length}번 찍어 ${Math.round(rate * 10) / 10} BPM으로 맞췄어요 (1번 줄 ${fmtT(st[0])}부터)` : `1번 줄 시작을 ${fmtT(st[0])}로 잡았어요`)
   }
   const resetOrder = () => {
-    setPlan(linesToPlan(stepIdx))
+    setPlan(defaultPlan(sheet))
     setOrderNote('')
-    if (events.length) push(fillEvents(sheet, linesToPlan(stepIdx), events[0].t, bpm))
+    if (events.length) push(fillEvents(sheet, defaultPlan(sheet), events[0].t, bpm))
     setAskOpen(false)
   }
   const save = async () => {

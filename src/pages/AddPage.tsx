@@ -427,7 +427,7 @@ export default function AddPage() {
           {askNote && <div className="panel-desc" style={{ padding: '0 12px 6px' }}>방금 고친 것: {askNote}</div>}
           {barMode && (
             <div className="panel-desc" style={{ padding: '0 12px 6px' }}>
-              박수가 안 적힌 줄에서 <b>한 구절(8박)이 끝나는 스텝을 누르세요.</b> 그 스텝 뒤에 ┃ 도장이 찍히고, 도장 하나가 8박으로 계산돼요. 다시 누르면 지워져요.
+              박수가 안 적힌 줄에서 <b>한 구절(8박)이 끝나는 스텝을 누르세요.</b> 그 스텝 뒤에 ┃ 도장이 찍히고, 도장 하나가 8박으로 계산돼요. 다시 누르면 지워져요. 반복·쉬기 줄은 박수를 고르면 "8박 반복"처럼 적혀서 동기화 때 앞 구절을 그만큼 다시 추는 걸로 계산해요.
             </div>
           )}
           {(() => {
@@ -458,6 +458,19 @@ export default function AddPage() {
                       ) : (
                         <span className="empty">(빈 줄)</span>
                       )}
+                    </div>
+                  ) : (kind === 'repeat' || kind === 'rest') && barMode ? (
+                    <div className="barline" aria-label={`${i + 1}줄 ${kind === 'repeat' ? '반복' : '쉬기'} 박수`}>
+                      <span className="empty">{kind === 'repeat' ? '↻ 반복' : '쉬기'}</span>
+                      {[4, 8, 16, 32].map((b) => {
+                        const label = kind === 'repeat' ? `${b}박 반복` : `${b}박 쉬기`
+                        const on = (l.label ?? '').replace(/\s/g, '') === label.replace(/\s/g, '')
+                        return (
+                          <button type="button" key={b} className={on ? 'chip on' : 'chip'} onClick={() => { setLine(i, { ...l, label: on ? '' : label }); haptic(10) }}>
+                            {b}박
+                          </button>
+                        )
+                      })}
                     </div>
                   ) : kind === 'steps' ? (
                     <input aria-label={`${i + 1}줄 스텝`} className={unsure ? 'uncertain-input' : ''} value={lineText(i, l)} placeholder={i === 0 ? '예) 전주 - 바운스 8' : hint} onChange={(e) => setText(i, e.target.value)} />

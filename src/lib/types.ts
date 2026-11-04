@@ -49,8 +49,8 @@ export type LineKind = 'steps' | 'section' | 'repeat' | 'rest' | 'text'
 export const LINE_KINDS: { v: LineKind; label: string; hint: string }[] = [
   { v: 'steps', label: '스텝', hint: '예) 런닝맨 4 / 티스텝 4' },
   { v: 'section', label: '구간', hint: '예) 후렴, A파트, 전주' },
-  { v: 'repeat', label: '반복', hint: '예) 처음부터 한 번 더 반복' },
-  { v: 'rest', label: '쉬기', hint: '예) 4박 쉬기, 턴 후 정리' },
+  { v: 'repeat', label: '반복', hint: '예) 8박 반복, 16박 반복, 처음부터 한 번 더' },
+  { v: 'rest', label: '쉬기', hint: '예) 4박 쉬기, 8박 쉬기, 턴 후 정리' },
   { v: 'text', label: '글', hint: '예) 셔플 부분만' },
 ]
 
