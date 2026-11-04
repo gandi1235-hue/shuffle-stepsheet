@@ -8,11 +8,11 @@ import { Skeleton, useToast } from '../components/ui'
 import { getFolder, getSheet, signedUrl, updateSync } from '../lib/api'
 import { haptic } from '../lib/prefs'
 import { detectTempo, snapToBeat, type Tempo } from '../lib/tempo'
-import { beatsOf, hasMarks, kindOf, syncOf, withSync, type Folder, type Stepsheet, type SyncSource } from '../lib/types'
+import { hasMarks, syncOf, withSync, type Folder, type Stepsheet, type SyncSource } from '../lib/types'
+import { DEFAULT_BPM, bpmFromMarks, defaultMarks, fill, lineBeats, stepIdxOf } from '../lib/sync'
 
 const fmtT = (x: number) => `${Math.floor(x / 60)}:${Math.floor(x % 60).toString().padStart(2, '0')}`
 const r1 = (x: number) => Math.round(x * 10) / 10
-const DEFAULT_BPM = 128
 
 type Analysis = 'idle' | 'running' | 'done' | 'weak' | 'failed' | 'na'
 
@@ -68,6 +68,13 @@ export default function SyncPage() {
       setMarks(s.lines.map((_, i) => saved[i] ?? null))
       setPhase('fix')
       touched.current = true
+    } else if (src === 'yt') {
+      // 유튜브 기본값: 영상 시작과 동시에 1번 줄. 박자는 음원용 동기화가 있으면 거기서, 없으면 기본값
+      const rate = tempo?.bpm ?? bpmFromMarks(s, syncOf(s.sync, 'file'))
+      setBpm(rate)
+      setMarks(defaultMarks(s, rate))
+      setPhase('fix')
+      touched.current = false
     } else {
       setMarks(s.lines.map(() => null))
       setPhase('first')
@@ -315,25 +322,4 @@ export default function SyncPage() {
       )}
     </div>
   )
-}
-
-/** 스텝 줄들의 lines 인덱스 */
-function stepIdxOf(sheet: Stepsheet) {
-  return sheet.lines.map((l, i) => (kindOf(l) === 'steps' && l.steps.some((st) => st.name.trim()) ? i : -1)).filter((i) => i >= 0)
-}
-/** 한 줄의 박수. 안 적혀 있으면 8박 */
-function lineBeats(sheet: Stepsheet, i: number) {
-  const b = sheet.lines[i].steps.reduce((n, st) => n + beatsOf(st.beats), 0)
-  return b > 0 ? b : 8
-}
-/** from번째 스텝 줄이 t0에 시작한다고 보고, 그 뒤 줄들을 박자로 채움 (앞 줄들은 그대로) */
-function fill(sheet: Stepsheet, base: (number | null)[], from: number, t0: number, rate: number) {
-  const idx = stepIdxOf(sheet)
-  const m = [...base]
-  let cur = t0
-  for (let k = from; k < idx.length; k++) {
-    m[idx[k]] = r1(cur)
-    cur += (lineBeats(sheet, idx[k]) * 60) / rate
-  }
-  return m
 }

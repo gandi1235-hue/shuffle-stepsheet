@@ -8,6 +8,7 @@ import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
 import { Copy, Doc, Edit, More, Photo, Print, Share } from '../components/Icons'
 import { copySheet, getFolder, getSheet, listFolders, moveSheet, signedUrl, updateMemo, updateSync } from '../lib/api'
 import { hasMarks, syncOf, withSync, type Folder, type Stepsheet } from '../lib/types'
+import { bpmFromMarks, defaultMarks } from '../lib/sync'
 
 export default function SheetPage() {
   const { id = '' } = useParams()
@@ -71,7 +72,10 @@ export default function SheetPage() {
   const fileIsVideo = Boolean(sheet.audio_path && isVideoSrc(sheet.audio_path))
 
   // 노래 동기화(저장된 줄별 시각): 재생 중인 줄 표시, 줄을 누르면 그 자리로 이동
-  const marks = syncOf(sheet.sync, playingYt ? 'yt' : 'file')
+  const savedMarks = syncOf(sheet.sync, playingYt ? 'yt' : 'file')
+  const hasSaved = hasMarks(savedMarks)
+  // 유튜브는 저장된 게 없어도 "영상 시작과 동시에 1번 줄"을 기본으로 보여 줌
+  const marks = hasSaved ? savedMarks : playingYt ? defaultMarks(sheet, bpmFromMarks(sheet, syncOf(sheet.sync, 'file'))) : savedMarks
   const hasSync = hasMarks(marks)
   const activeIndex = (() => {
     if (!hasPlayer || !hasSync) return undefined
@@ -152,8 +156,8 @@ export default function SheetPage() {
         </div>
       )}
       {canEdit && hasPlayer && (
-        <button type="button" className={hasSync ? 'btn sync on' : 'btn sync'} onClick={() => nav(`/sheet/${sheet.id}/sync`)}>
-          {hasSync ? '동기화 교정' : '노래 동기화'}
+        <button type="button" className={hasSaved ? 'btn sync on' : 'btn sync'} onClick={() => nav(`/sheet/${sheet.id}/sync`)}>
+          {hasSaved ? '동기화 교정' : playingYt ? '동기화 맞추기' : '노래 동기화'}
         </button>
       )}
     </>
@@ -206,7 +210,7 @@ export default function SheetPage() {
             <span className="grow"><b>다른 폴더로 옮기기</b><span>이 폴더에서는 사라지고 저쪽 폴더로 가요</span></span>
           </button>
         )}
-        {hasSync && canEdit && (
+        {hasSaved && canEdit && (
           <button type="button" className="menu-item" onClick={() => { setMenu(null); clearSync() }}>
             <span className="ico">✕</span>
             <span className="grow"><b>동기화 지우기</b><span>저장된 줄별 시각을 지워요</span></span>
