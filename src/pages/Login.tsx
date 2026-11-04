@@ -1,20 +1,22 @@
 import { useState } from 'react'
 import { configured, supabase } from '../lib/supabase'
 
+const appUrl = () => window.location.href.split('#')[0]
+
 export default function Login() {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [err, setErr] = useState('')
 
   const kakao = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'kakao', options: { redirectTo: window.location.origin } })
+    const { error } = await supabase.auth.signInWithOAuth({ provider: 'kakao', options: { redirectTo: appUrl() } })
     if (error) setErr(error.message)
   }
 
   const magic = async (e: React.FormEvent) => {
     e.preventDefault()
     setErr('')
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } })
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: appUrl() } })
     if (error) setErr(error.message)
     else setSent(true)
   }

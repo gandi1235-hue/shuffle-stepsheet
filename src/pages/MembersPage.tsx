@@ -22,7 +22,7 @@ export default function MembersPage() {
   const isOwner = folder?.role === 'owner'
   const invite = async () => {
     if (!folder?.invite_code) return
-    const text = `[스텝지함] "${folder.name}" 폴더 초대\n앱: ${window.location.origin}\n초대 코드: ${folder.invite_code}\n앱에 들어가 "초대 코드로 참여"를 누르고 코드를 넣어 주세요.`
+    const text = `[스텝지함] "${folder.name}" 폴더 초대\n앱: ${window.location.href.split('#')[0]}\n초대 코드: ${folder.invite_code}\n앱에 들어가 "초대 코드로 참여"를 누르고 코드를 넣어 주세요.`
     if (navigator.share) await navigator.share({ text }).catch(() => undefined)
     else {
       await navigator.clipboard.writeText(text)

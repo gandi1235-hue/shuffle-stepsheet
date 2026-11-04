@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/auth'
 import AddPage from './pages/AddPage'
 import FolderPage from './pages/FolderPage'
@@ -27,11 +27,11 @@ function Gate() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <HashRouter>
         <div className="app">
           <Gate />
         </div>
-      </BrowserRouter>
+      </HashRouter>
     </AuthProvider>
   )
 }
