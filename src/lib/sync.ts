@@ -1,4 +1,4 @@
-import { beatsOf, kindOf, type Stepsheet, type SyncEvent } from './types'
+import { beatsOf, kindOf, type Stepsheet, type SyncEvent, type SyncPlanItem } from './types'
 
 export const DEFAULT_BPM = 128
 const r1 = (x: number) => Math.round(x * 10) / 10
@@ -9,7 +9,7 @@ type Lines = Pick<Stepsheet, 'lines'>
  * - { line }            그 줄(lines 인덱스)을 춤. beats를 주면 평소와 다른 박수만큼(길게/짧게), at을 주면 그 시각(초)에 시작
  * - { rest }            그만큼 박을 쉼(동작 없음·전환·기다림)
  */
-export type PlanItem = { line: number; beats?: number; at?: number } | { rest: number }
+export type PlanItem = SyncPlanItem
 export const isRest = (p: PlanItem): p is { rest: number } => 'rest' in p
 export const planLines = (plan: PlanItem[]) => plan.filter((p) => !isRest(p)).map((p) => (p as { line: number }).line)
 export const linesToPlan = (lines: number[]): PlanItem[] => lines.map((line) => ({ line }))
@@ -68,28 +68,46 @@ export function orderOf(events: SyncEvent[]): number[] {
   return events.map((e) => e.line)
 }
 /**
- * 저장된 사건 목록 → 계획. 줄 사이가 그 줄 박수보다 한 박 넘게 길면 그만큼 쉼으로, 짧으면 그 줄을 짧게(beats) 본다.
- * 그래야 박자를 −/+로 바꿔 다시 채워도 쉬는 구간이 사라지지 않는다.
+ * (계획을 저장하지 않은 옛 데이터용) 사건 목록 → 계획. 줄 사이가 그 줄 박수보다 한 박 넘게 길면 그만큼 쉼으로,
+ * 짧으면 다음 줄을 그 시각에 고정(at)한다. 줄의 박수(찰스턴 4 = 4박)는 절대 바꾸지 않는다.
  */
 export function planOf(sheet: Lines, events: SyncEvent[], rate: number): PlanItem[] {
   const beat = 60 / rate
   const out: PlanItem[] = []
+  let pinNext = false
   events.forEach((e, k) => {
     const next = events[k + 1]
-    const item: PlanItem = { line: e.line }
-    if (next) {
-      const got = Math.round((next.t - e.t) / beat)
-      const want = lineBeats(sheet, e.line)
-      if (got > want + 1) {
-        out.push(item)
-        out.push({ rest: got - want })
-        return
-      }
-      if (got >= 1 && got < want - 1) item.beats = got
-    }
+    const item: PlanItem = pinNext ? { line: e.line, at: e.t } : { line: e.line }
+    pinNext = false
     out.push(item)
+    if (!next) return
+    const got = Math.round((next.t - e.t) / beat)
+    const want = lineBeats(sheet, e.line)
+    if (got > want + 1) out.push({ rest: got - want })
+    else if (got < want - 1) pinNext = true
   })
   return out
+}
+/** 계획에서 손으로 고정한 시각(at)만 걷어냄 (처음부터 다시 맞출 때) */
+export function unpinned(plan: PlanItem[]): PlanItem[] {
+  return plan.map((p) => (isRest(p) || p.at === undefined ? p : { line: p.line, ...(p.beats ? { beats: p.beats } : {}) }))
+}
+/**
+ * k번째 사건(시간순)이 계획의 몇 번째 항목인지. 같은 줄이 여러 번 나오면 같은 줄 중 몇 번째인지로 짝을 맞춤
+ */
+export function planIndexOfEvent(plan: PlanItem[], events: SyncEvent[], k: number): number {
+  const line = events[k]?.line
+  if (line === undefined) return -1
+  const nth = events.slice(0, k).filter((e) => e.line === line).length
+  let seen = 0
+  for (let i = 0; i < plan.length; i++) {
+    const p = plan[i]
+    if (!isRest(p) && p.line === line) {
+      if (seen === nth) return i
+      seen++
+    }
+  }
+  return -1
 }
 /** 계획을 사람이 읽는 글로: "1 → 2 → (4박 쉼) → 3" (번호는 스텝지에 적힌 순서) */
 export function planText(sheet: Lines, plan: PlanItem[]): string {

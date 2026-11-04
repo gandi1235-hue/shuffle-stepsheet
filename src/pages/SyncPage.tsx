@@ -9,8 +9,8 @@ import { getFolder, getSheet, planRequest, signedUrl, updateSync } from '../lib/
 import { haptic } from '../lib/prefs'
 import { useSpeech } from '../lib/speech'
 import { detectTempo, snapToBeat, type Tempo } from '../lib/tempo'
-import { activeLine, eventsOf, marksFromEvents, savedBpm, withSync, type Folder, type Stepsheet, type SyncEvent, type SyncSource } from '../lib/types'
-import { DEFAULT_BPM, bpmFromEvents, fillEvents, linesToPlan, orderPromptLines, planLines, planOf, planText, stepIdxOf, type PlanItem } from '../lib/sync'
+import { activeLine, eventsOf, marksFromEvents, savedBpm, savedPlan, withSync, type Folder, type Stepsheet, type SyncEvent, type SyncSource } from '../lib/types'
+import { DEFAULT_BPM, bpmFromEvents, fillEvents, isRest, linesToPlan, orderPromptLines, planIndexOfEvent, planLines, planOf, planText, stepIdxOf, unpinned, type PlanItem } from '../lib/sync'
 
 const fmtT = (x: number) => `${Math.floor(x / 60)}:${Math.floor(x % 60).toString().padStart(2, '0')}`
 const r1 = (x: number) => Math.round(x * 10) / 10
@@ -78,7 +78,7 @@ export default function SyncPage() {
     if (saved.length) {
       const rate = savedBpm(s.sync) ?? bpmFromEvents(s, saved)
       setEvents(saved)
-      setPlan(planOf(s, saved, rate))
+      setPlan(savedPlan(s.sync, src) ?? planOf(s, saved, rate))
       setBpm(rate)
       setPhase('fix')
       touched.current = true
@@ -169,20 +169,27 @@ export default function SyncPage() {
     if (events.length) push(fillEvents(sheet, plan, events[0].t, rate))
     touched.current = true
   }
-  /** 교정: 줄을 누른 그 순간이 그 줄의 시작이 됨 (그 줄만 바뀜). 같은 줄이 여러 번이면 지금과 가장 가까운 것 */
+  /**
+   * 교정: 줄을 누른 그 순간이 그 줄의 시작이 됨. 박자(BPM)와 줄 박수는 그대로 두고 시작 위치만 옮기므로
+   * 그 뒤 줄들도 같이 밀리고(이미 고정한 줄은 제자리), 앞 줄과 벌어진 만큼은 쉼이 됨. 같은 줄이 여러 번이면 지금과 가장 가까운 것
+   */
   const fixLine = (i: number) => {
     const tn = r1(now())
     const mine = events.map((e, k) => ({ e, k })).filter((x) => x.e.line === i)
-    let ev: SyncEvent[]
-    if (!mine.length) ev = [...events, { t: tn, line: i }].sort((a, b) => a.t - b.t)
-    else {
+    if (!mine.length) {
+      push([...events, { t: tn, line: i }].sort((a, b) => a.t - b.t))
+    } else {
       const near = mine.reduce((a, b) => (Math.abs(b.e.t - tn) < Math.abs(a.e.t - tn) ? b : a))
-      ev = events.map((e, k) => (k === near.k ? { ...e, t: tn } : e)).sort((a, b) => a.t - b.t)
+      const pi = planIndexOfEvent(plan, events, near.k)
+      if (pi >= 0) {
+        const next = plan.map((p, k) => (k === pi && !isRest(p) ? { ...p, at: tn } : p))
+        setPlan(next)
+        push(fillEvents(sheet, next, events[0].t, bpm))
+      } else push(events.map((e, k) => (k === near.k ? { ...e, t: tn } : e)).sort((a, b) => a.t - b.t))
     }
-    push(ev)
     touched.current = true
     haptic(10)
-    toast(`${stepIdx.indexOf(i) + 1}번 줄 시작 → ${fmtT(tn)}`)
+    toast(`${stepIdx.indexOf(i) + 1}번 줄 시작 → ${fmtT(tn)} (뒤 줄도 같이 옮겨요)`)
   }
   const undo = () => {
     const prev = history[history.length - 1]
@@ -193,6 +200,7 @@ export default function SyncPage() {
   const restart = () => {
     setHistory([])
     setEvents([])
+    setPlan(unpinned(plan))
     setPhase('first')
     touched.current = false
     if (tempo) setBpm(tempo.bpm)
@@ -238,7 +246,7 @@ export default function SyncPage() {
   const save = async () => {
     setSaving(true)
     try {
-      await updateSync(sheet.id, withSync(sheet.sync, playingYt ? 'yt' : 'file', events, bpm))
+      await updateSync(sheet.id, withSync(sheet.sync, playingYt ? 'yt' : 'file', events, bpm, plan))
       haptic(20)
       toast(`${playingYt ? '유튜브' : '음원'}용 동기화를 저장했어요. 재생하면 지금 줄이 표시돼요`)
       nav(`/sheet/${sheet.id}`, { replace: true })

@@ -3,8 +3,11 @@
 // 비밀키(Edge Functions > Secrets) 중 하나만 넣으면 됩니다:
 //   GEMINI_API_KEY    : Google AI Studio 무료 키 (https://aistudio.google.com/apikey)
 //   ANTHROPIC_API_KEY : Claude API 키 (https://console.anthropic.com)
-//   OPENAI_API_KEY    : OpenAI 키 (https://platform.openai.com/api-keys) — 있으면 AI 아바타(gpt-image-1)와 말 받아 적기(gpt-4o-transcribe)에 사용
-// 선택: GEMINI_MODEL (기본 gemini-2.5-flash), CLAUDE_MODEL (기본 claude-sonnet-5-5), OPENAI_STT_MODEL (기본 gpt-4o-transcribe), OPENAI_IMAGE_MODEL (기본 gpt-image-1), OPENAI_IMAGE_QUALITY (기본 medium)
+//   OPENAI_API_KEY    : OpenAI 키 (https://platform.openai.com/api-keys) — 있으면 모든 일(사진 읽기·직접 요청·말로 고치기·아바타·받아 적기)에 GPT를 먼저 씀
+// 글/사진 읽기 우선순위: OpenAI(GPT, 추론 xhigh) → Claude → Gemini. 앞 것이 실패하면 다음 것으로.
+// 선택: OPENAI_TEXT_MODEL (없으면 키로 쓸 수 있는 최신 gpt-5 계열 자동 선택), OPENAI_REASONING (기본 xhigh; 사진 읽기는 OPENAI_PHOTO_REASONING 기본 high),
+//       OPENAI_STT_MODEL (기본 gpt-4o-transcribe), OPENAI_IMAGE_MODEL (기본 gpt-image-1), OPENAI_IMAGE_QUALITY (기본 medium),
+//       GEMINI_MODEL (기본 gemini-2.5-flash), CLAUDE_MODEL (기본 claude-sonnet-5-5)
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -68,11 +71,12 @@ Deno.serve(async (req) => {
     const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string } };
     const geminiKey = findKey(/gemini|google/i);
     const claudeKey = findKey(/ant.?h?rop|claude/i);
+    const openaiKey = findKey(/openai/i);
+    const keys: Keys = { openai: openaiKey, claude: claudeKey, gemini: geminiKey };
 
     // 아바타 모드: { avatar: {media_type, data} } — 사진 속 사람을 귀여운 전신 캐릭터로 (OpenAI 키 있으면 GPT 이미지, 없으면 Gemini 이미지 모델)
     // 모델 이름이 바뀌어도 되게: 키로 쓸 수 있는 모델 목록에서 이미지 생성 모델을 찾아 차례로 시도
     if (body.avatar?.data) {
-      const openaiKey = findKey(/openai/i);
       if (!openaiKey && !geminiKey) throw new Error("AI 아바타는 OpenAI 키나 Gemini 키가 있어야 만들 수 있어요");
       const prompt = "Turn the person in this photo into a cute chibi-style full-body 3D-cartoon dance character (soft Pixar-like sticker look). Big head and small body (about 2.5 heads tall), head near the top of the frame, whole body visible down to the shoes, standing in a playful shuffle-dance pose on a simple floor, facing the camera, smiling. Keep their recognizable features: hair style and color, glasses, face shape, skin tone, age, and the outfit colors from the photo. Plain soft pastel background, portrait 3:4, no text, no watermark.";
       const errors: string[] = [];
@@ -156,8 +160,7 @@ Deno.serve(async (req) => {
 
     // 받아 적기 모드: { audio: {media_type, data(base64), hint?} } — 녹음한 말을 글로. OpenAI 키가 있으면 Whisper 계열, 없으면 Gemini
     if (body.audio?.data) {
-      const openaiKey = findKey(/openai/i);
-      const hint = body.audio.hint ?? "셔플댄스 스텝지 앱에서 말한 요청. 스텝 이름(런닝맨, 티스텝, 찰스턴, 크리스크로스, 글라이드, 킥볼체인지, 스핀), 박수(4박, 8박), 줄 번호, 초, BPM이 자주 나옴.";
+      const hint = body.audio.hint ?? "셔플댄스 스텝지 앱에서 말한 요청. 스텝 이름(런닝맨, 티스텝, 찰스턴, 크리스크로스, 글라이드, 킥볼체인지, 스핀), 박수(2박, 4박, 8박, 16박 — 숫자로 적기), 줄 번호(1번, 2번), 초, BPM이 자주 나옴.";
       if (openaiKey) {
         const bin = Uint8Array.from(atob(body.audio.data), (c) => c.charCodeAt(0));
         const ext = body.audio.media_type.includes("mp4") ? "mp4" : body.audio.media_type.includes("ogg") ? "ogg" : body.audio.media_type.includes("wav") ? "wav" : "webm";
@@ -208,12 +211,12 @@ Deno.serve(async (req) => {
 
 [규칙]
 - 요청에 언급된 것만 바꾸고 나머지는 글자 하나 바꾸지 않고 그대로 둡니다(raw, uncertain 같은 다른 필드도 그대로).
-- 스텝 이름은 스텝지에서 이미 쓰는 표기를 따르고, 박수를 말하면 beats에 숫자만 적습니다("4박" → "4").
+- 스텝 이름은 스텝지에서 이미 쓰는 표기를 따르고, 박수를 말하면 beats에 숫자만 적습니다("4박" → "4", "여덟 박"·"8카운트" → "8"). 말한 숫자를 그대로 쓰고, 스텝 개수나 마디 수로 바꿔 계산하지 않습니다. 박수를 말하지 않은 스텝의 beats는 그대로 둡니다.
 - "지워", "빼" → 그 줄이나 스텝을 삭제. "추가", "넣어", "아래에" → 그 자리에 새 줄/스텝. "바꿔", "대신" → 교체. "해설", "메모", "손동작" → notes에 추가/수정.
 - 요청이 가리키는 줄을 찾을 수 없거나 뜻을 알 수 없으면 lines를 원본 그대로 두고 unclear에 짧게 되묻는 말(한국어)을 적습니다. 그 밖에는 unclear를 빈 문자열로.
 반드시 JSON {"lines":[...], "note":"바뀐 점 한 줄(한국어, 25자 내)", "unclear":""} 만 출력합니다.`;
       const ask = `[스텝지]\n${JSON.stringify({ lines: body.sheet.lines, memo: body.sheet.memo ?? "" })}\n\n[요청]\n${String(body.edit_request).trim()}`;
-      const t = geminiKey ? await viaGemini([], geminiKey, ask, sys) : claudeKey ? await viaClaude([], claudeKey, ask, sys) : "";
+      const t = await askAI([], ask, sys, keys, "edit");
       const s0 = t.indexOf("{"); const e0 = t.lastIndexOf("}");
       const j = s0 >= 0 ? JSON.parse(t.slice(s0, e0 + 1)) : {};
       return new Response(JSON.stringify({ lines: Array.isArray(j.lines) ? j.lines : null, note: j.note ?? "", unclear: j.unclear ?? "" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -225,7 +228,7 @@ Deno.serve(async (req) => {
 
 plan 항목 종류:
 - {"line": N} : N번 줄을 춤 (한 줄 = 그 줄의 박수만큼 시간이 흐름)
-- {"line": N, "beats": B} : N번 줄을 평소와 다른 박수 B만큼 (예: "3번은 16박으로 길게", "2번은 반만")
+- {"line": N, "beats": B} : 사용자가 그 줄의 길이를 직접 말했을 때만 (예: "3번은 16박으로 길게" → 16, "2번은 반만" → 그 줄 박수의 절반). 말하지 않은 줄에는 beats를 절대 넣지 않습니다. 줄의 박수는 목록의 괄호 숫자이며 임의로 줄이거나 늘리지 않습니다(찰스턴 4 = 4박, 두 스텝 4+4 = 8박).
 - {"line": N, "at": 초} : 요청에 그 줄의 시작 시각이 있을 때 (예: "2번은 35초에", "후렴은 1분 10초부터")
 - {"rest": 박수} : 그만큼 쉼. 동작 없음, 전환, 기다림, 전주 (예: "1번 하고 4박 더 쉬고 2번" → line 1, rest 4, line 2 / "2번 전에 8박 기다렸다가" → rest 8, line 2 / "한 마디 쉬고" → rest 4, "두 마디" → rest 8)
 
@@ -239,7 +242,7 @@ plan 항목 종류:
 
 반드시 JSON {"plan": [...], "start_at": 초 또는 null, "bpm": 숫자 또는 null, "note": "바뀐 점 한 줄(한국어, 20자 내)", "unclear": ""} 만 출력합니다.`;
       const ask = `[스텝 줄 목록]\n${body.lines.map((l) => String(l)).join("\n")}\n\n[요청]\n${String(body.order_request).trim()}`;
-      const t = geminiKey ? await viaGemini([], geminiKey, ask, sys) : claudeKey ? await viaClaude([], claudeKey, ask, sys) : "";
+      const t = await askAI([], ask, sys, keys, "plan");
       const s0 = t.indexOf("{"); const e0 = t.lastIndexOf("}");
       const j = s0 >= 0 ? JSON.parse(t.slice(s0, e0 + 1)) : {};
       const plan = Array.isArray(j.plan) ? j.plan : [];
@@ -251,7 +254,7 @@ plan 항목 종류:
     // 가수 추정 모드: { title } 만 오면 노래 제목으로 가수를 알려 줌
     if (body.title && !body.images?.length) {
       const q = `노래 제목: "${body.title.trim()}"\n이 노래의 가수(원곡 가수) 이름만 한국어로 답하세요. 모르거나 애매하면 빈 문자열. 반드시 JSON {"artist": "..."} 만 출력.`;
-      const t = geminiKey ? await viaGemini([], geminiKey, q) : claudeKey ? await viaClaude([], claudeKey, q) : "";
+      const t = await askAI([], q, SYSTEM, keys, "artist");
       const s0 = t.indexOf("{"); const e0 = t.lastIndexOf("}");
       const artist = s0 >= 0 ? String(JSON.parse(t.slice(s0, e0 + 1)).artist ?? "") : "";
       return new Response(JSON.stringify({ artist }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -259,11 +262,7 @@ plan 항목 종류:
 
     const images = body.images ?? [];
     if (!images.length) throw new Error("이미지가 없습니다");
-    const text = geminiKey
-      ? await viaGemini(images, geminiKey)
-      : claudeKey
-        ? await viaClaude(images, claudeKey)
-        : (() => { throw new Error("AI 키가 설정되지 않았습니다 (GEMINI_API_KEY 또는 ANTHROPIC_API_KEY)"); })();
+    const text = await askAI(images, ASK, SYSTEM, keys, "photo");
 
     const start = text.indexOf("{");
     const end = text.lastIndexOf("}");
@@ -310,6 +309,106 @@ function findKey(pattern: RegExp): string | undefined {
   return hit?.[1].trim();
 }
 const ASK = "이 스텝지를 위 양식의 JSON으로 정리해 주세요.";
+
+type Keys = { openai?: string; claude?: string; gemini?: string };
+type Task = "photo" | "plan" | "edit" | "artist";
+
+/** 키가 있는 모델을 OpenAI → Claude → Gemini 순으로 시도. 앞 것이 실패하면(모델 없음·한도·시간 초과) 다음 것으로 */
+async function askAI(images: Img[], ask: string, sys: string, keys: Keys, task: Task): Promise<string> {
+  const tries: { name: string; run: () => Promise<string> }[] = [];
+  if (keys.openai) tries.push({ name: "openai", run: () => viaOpenAI(images, keys.openai!, ask, sys, task) });
+  if (keys.claude) tries.push({ name: "claude", run: () => viaClaude(images, keys.claude!, ask, sys) });
+  if (keys.gemini) tries.push({ name: "gemini", run: () => viaGemini(images, keys.gemini!, ask, sys) });
+  if (!tries.length) throw new Error("AI 키가 설정되지 않았습니다 (OPENAI_API_KEY, ANTHROPIC_API_KEY 또는 GEMINI_API_KEY)");
+  let lastErr: Error | null = null;
+  for (const t of tries) {
+    try {
+      const out = await t.run();
+      if (out.includes("{")) {
+        console.log(`[${task}] ok via ${t.name}`);
+        return out;
+      }
+      lastErr = new Error(`${t.name}: 빈 답`);
+    } catch (e) {
+      lastErr = e as Error;
+      console.error(`[${task}] ${t.name} failed: ${lastErr.message}`);
+    }
+  }
+  throw lastErr ?? new Error("AI 호출 실패");
+}
+
+let openaiModelCache: { key: string; model: string } | null = null;
+/** 쓸 수 있는 가장 좋은 gpt-5 계열 모델. OPENAI_TEXT_MODEL이 있으면 그것 */
+async function openaiModel(key: string): Promise<string> {
+  const forced = Deno.env.get("OPENAI_TEXT_MODEL")?.trim();
+  if (forced) return forced;
+  if (openaiModelCache?.key === key) return openaiModelCache.model;
+  const prefer = ["gpt-5.5", "gpt-5.4", "gpt-5.3", "gpt-5.2", "gpt-5.1", "gpt-5"];
+  let model = "gpt-5";
+  try {
+    const res = await fetch("https://api.openai.com/v1/models", { headers: { Authorization: `Bearer ${key}` } });
+    const j = await res.json();
+    const ids = new Set(((j.data ?? []) as { id: string }[]).map((m) => m.id));
+    model = prefer.find((m) => ids.has(m)) ?? model;
+    console.log(`[openai] model: ${model}`);
+  } catch (e) {
+    console.error(`[openai] models list failed: ${(e as Error).message}`);
+  }
+  openaiModelCache = { key, model };
+  return model;
+}
+
+/** OpenAI Responses API. 추론 세기는 xhigh(사진 읽기는 high) — 모델이 모르는 값이면 한 단계씩 낮춰 재시도 */
+async function viaOpenAI(images: Img[], key: string, ask: string, sys: string, task: Task): Promise<string> {
+  const model = await openaiModel(key);
+  const want = (task === "photo" ? Deno.env.get("OPENAI_PHOTO_REASONING") : Deno.env.get("OPENAI_REASONING"))?.trim() || (task === "photo" ? "high" : "xhigh");
+  const ladder = ["xhigh", "high", "medium", "low"];
+  const efforts = [want, ...ladder.slice(Math.max(0, ladder.indexOf(want) + 1))].filter((v, i, a) => a.indexOf(v) === i);
+  const content = [
+    ...images.map((i) => ({ type: "input_image", image_url: `data:${i.media_type};base64,${i.data}`, detail: "high" })),
+    { type: "input_text", text: ask },
+  ];
+  let lastMsg = "";
+  for (const effort of efforts) {
+    for (const withFormat of [true, false]) {
+      const res = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        body: JSON.stringify({
+          model,
+          reasoning: { effort },
+          instructions: sys,
+          input: [{ role: "user", content }],
+          max_output_tokens: 60000,
+          ...(withFormat ? { text: { format: { type: "json_object" } } } : {}),
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        lastMsg = j?.error?.message ?? `HTTP ${res.status}`;
+        console.error(`[openai] ${model} effort=${effort}${withFormat ? "" : " (no format)"}: ${res.status} ${lastMsg}`);
+        if (res.status === 400 && withFormat && /format|json_object/i.test(lastMsg)) continue; // 형식 옵션을 모르면 빼고
+        if (res.status === 400 && /effort|reasoning/i.test(lastMsg)) break; // 추론 세기를 모르면 한 단계 낮춰서
+        throw new Error(lastMsg);
+      }
+      type OutItem = { type: string; content?: { type: string; text?: string }[] };
+      const text = ((j.output ?? []) as OutItem[])
+        .filter((o) => o.type === "message")
+        .flatMap((o) => o.content ?? [])
+        .filter((c) => c.type === "output_text")
+        .map((c) => c.text ?? "")
+        .join("");
+      if (j.status === "incomplete") console.error(`[openai] incomplete: ${JSON.stringify(j.incomplete_details ?? {})}`);
+      if (text.trim()) {
+        console.log(`[openai] ${model} effort=${effort} ok (${j.usage?.output_tokens ?? "?"} out tokens)`);
+        return text;
+      }
+      lastMsg = `답이 비어 있음 (${j.status ?? "?"})`;
+      break;
+    }
+  }
+  throw new Error(`OpenAI 오류: ${lastMsg}`);
+}
 
 async function viaGemini(images: Img[], key: string, ask = ASK, sys = SYSTEM): Promise<string> {
   const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
