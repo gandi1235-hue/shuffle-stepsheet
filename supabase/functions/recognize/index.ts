@@ -8,7 +8,7 @@
 // 기본은 빠른 미니 모델(추론 low), 앱에서 "고급 추론"을 켜면 가장 좋은 모델(추론 xhigh). 사진 읽기는 항상 가장 좋은 모델(high).
 // 선택: OPENAI_TEXT_MODEL / OPENAI_FAST_MODEL (없으면 키로 쓸 수 있는 최신 gpt-5 계열·미니 자동 선택), OPENAI_REASONING (고급, 기본 xhigh), OPENAI_FAST_REASONING (기본 low), OPENAI_PHOTO_REASONING (기본 high), OPENAI_VIDEO_REASONING (고급 영상, 기본 xhigh),
 //       OPENAI_STT_MODEL (기본 gpt-4o-transcribe), OPENAI_IMAGE_MODEL (기본 gpt-image-1), OPENAI_IMAGE_QUALITY (기본 medium),
-//       GEMINI_MODEL (기본 gemini-2.5-flash), CLAUDE_MODEL (기본 claude-sonnet-5-5)
+//       GEMINI_MODEL (기본 gemini-3-flash-preview), CLAUDE_MODEL (기본 claude-sonnet-5-5)
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -187,7 +187,7 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ text: String(j.text ?? "").trim(), engine: "openai" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       if (!geminiKey) throw new Error("받아 적기에는 OpenAI 키나 Gemini 키가 필요해요");
-      const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
+      const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-3-flash-preview";
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
@@ -644,11 +644,14 @@ async function viaOpenAI(images: Img[], key: string, ask: string, sys: string, t
   throw new Error(`OpenAI 오류: ${lastMsg}`);
 }
 
-let geminiVideoCache: { key: string; models: string[] } | null = null;
+let geminiVideoCache: { key: string; deep: boolean; models: string[] } | null = null;
 /** 유튜브 영상을 직접 볼 수 있는 Gemini 모델들(선호 순). GEMINI_VIDEO_MODEL이 있으면 맨 앞 */
-async function geminiVideoModels(key: string): Promise<string[]> {
-  if (geminiVideoCache?.key === key) return geminiVideoCache.models;
-  const prefer = ["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-2.5-pro", "gemini-3.1-flash", "gemini-3-flash-preview", "gemini-2.5-flash"];
+async function geminiVideoModels(key: string, deep = false): Promise<string[]> {
+  if (geminiVideoCache?.key === key && geminiVideoCache.deep === deep) return geminiVideoCache.models;
+  // 기본은 flash 먼저(무료 키도 됨, 빠름). 고급 추론을 켰을 때만 pro 먼저 (무료 키는 pro 한도가 0이라 바로 다음 모델로 넘어감)
+  const flash = ["gemini-3.8-flash", "gemini-3.1-flash", "gemini-3-flash-preview", "gemini-2.5-flash"];
+  const pro = ["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-2.5-pro"];
+  const prefer = deep ? [...pro, ...flash] : [...flash, ...pro];
   let avail: string[] = [];
   try {
     const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": key } });
@@ -664,16 +667,16 @@ async function geminiVideoModels(key: string): Promise<string[]> {
   const forced = Deno.env.get("GEMINI_VIDEO_MODEL")?.trim();
   const models = forced ? [forced, ...ordered.filter((m) => m !== forced)] : ordered;
   console.log(`[gemini] video models: ${models.slice(0, 4).join(", ")}`);
-  geminiVideoCache = { key, models };
+  geminiVideoCache = { key, deep, models };
   return models;
 }
 
 /** Gemini에게 유튜브 영상(공개 영상)을 직접 보여 주고 답을 받음. 모델이 안 되면 다음 모델로 */
 /** Gemini가 매체(유튜브 링크 file_data 또는 음악 inline_data)를 직접 보고/듣고 답하기 */
 async function viaGeminiMedia(mediaPart: Record<string, unknown>, key: string, ask: string, sys: string, deep: boolean, what: "video" | "audio"): Promise<string> {
-  const models = await geminiVideoModels(key);
+  const models = await geminiVideoModels(key, deep);
   let lastMsg = "";
-  for (const model of models.slice(0, 4)) {
+  for (const model of models.slice(0, 5)) {
     for (const withThink of [true, false]) {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: "POST",
@@ -686,9 +689,13 @@ async function viaGeminiMedia(mediaPart: Record<string, unknown>, key: string, a
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        lastMsg = j?.error?.message ?? `HTTP ${res.status}`;
-        console.error(`[gemini] ${what} ${model}${withThink ? "" : " (no thinking)"}: ${res.status} ${lastMsg}`);
-        if (withThink && res.status === 400 && /thinking/i.test(lastMsg)) continue;
+        const raw = String(j?.error?.message ?? `HTTP ${res.status}`);
+        console.error(`[gemini] ${what} ${model}${withThink ? "" : " (no thinking)"}: ${res.status} ${raw.slice(0, 300)}`);
+        // 무료 키 한도(하루 20번 등)를 다 쓴 경우: 사람이 알아들을 말로. 다른 모델은 한도가 따로라 계속 시도
+        lastMsg = res.status === 429 && /free_tier|quota/i.test(raw)
+          ? `Gemini 무료 한도를 다 썼어요 (flash는 하루 20번). ${(raw.match(/retry in (\d+)h/i)?.[1] ?? "") ? `${raw.match(/retry in (\d+)h/i)![1]}시간쯤 뒤에 다시 되고, ` : "내일 다시 되고, "}aistudio.google.com에서 결제를 켜면 바로 돼요`
+          : raw.slice(0, 200);
+        if (withThink && res.status === 400 && /thinking/i.test(raw)) continue;
         break;
       }
       const text = ((j.candidates?.[0]?.content?.parts ?? []) as { text?: string }[]).map((p) => p.text ?? "").join("");
@@ -705,7 +712,7 @@ async function viaGeminiMedia(mediaPart: Record<string, unknown>, key: string, a
 }
 
 async function viaGemini(images: Img[], key: string, ask = ASK, sys = SYSTEM): Promise<string> {
-  const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
+  const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-3-flash-preview";
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
