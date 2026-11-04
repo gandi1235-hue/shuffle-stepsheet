@@ -97,23 +97,27 @@ export default function AddPage() {
     const items = (srcSongs ?? []).flatMap((sg) => sg.sheets.filter((sh) => picked.has(sh.id)).map((sh) => ({ id: sh.id, title: sg.title })))
     if (!items.length) return toast('가져올 스텝지를 체크해 주세요')
     let ok = 0
+    let dup = 0 // 같은 노래·같은 창작자가 이미 있어서 건너뛴 것
+    const failed: string[] = []
     let lastId = ''
-    try {
-      for (const it of items) {
-        setImporting(`${ok + 1}/${items.length} 복사 중… ${it.title}`)
+    for (let k = 0; k < items.length; k++) {
+      const it = items[k]
+      setImporting(`${k + 1}/${items.length} 복사 중… ${it.title}`)
+      try {
         const saved = await copySheet(it.id, folderId)
         lastId = saved.id
         ok++
+      } catch (e) {
+        if ((e as Error).message === 'DUPLICATE') dup++
+        else failed.push(`${it.title}: ${(e as Error).message}`)
       }
-      haptic(20)
-      toast(items.length === 1 ? `"${items[0].title}" 스텝지를 불러왔어요` : `스텝지 ${ok}개를 불러왔어요`)
-      if (items.length === 1) nav(`/sheet/${lastId}`, { replace: true })
-      else nav(`/folder/${folderId}`, { replace: true })
-    } catch (e) {
-      toast(`${ok}개 복사한 뒤 멈췄어요: ${(e as Error).message}`)
-    } finally {
-      setImporting('')
     }
+    setImporting('')
+    const parts = [ok ? `${ok}개 불러왔어요` : '', dup ? `${dup}개는 이미 있어서 건너뛰었어요` : '', failed.length ? `${failed.length}개 실패 (${failed[0]})` : ''].filter(Boolean)
+    if (ok) haptic(20)
+    toast(parts.join(' · ') || '가져온 게 없어요')
+    if (ok === 1 && items.length === 1) nav(`/sheet/${lastId}`, { replace: true })
+    else if (ok) nav(`/folder/${folderId}`, { replace: true })
   }
   const fileRef = useRef<HTMLInputElement>(null)
   const toast = useToast()
