@@ -69,10 +69,8 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "로그인이 필요해요" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
     const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string } };
-    const geminiKey = findKey(/gemini|google/i);
-    const claudeKey = findKey(/ant.?h?rop|claude/i);
-    const openaiKey = findKey(/openai/i);
-    const keys: Keys = { openai: openaiKey, claude: claudeKey, gemini: geminiKey };
+    const keys = detectKeys();
+    const { gemini: geminiKey, openai: openaiKey } = keys;
 
     // 아바타 모드: { avatar: {media_type, data} } — 사진 속 사람을 귀여운 전신 캐릭터로 (OpenAI 키 있으면 GPT 이미지, 없으면 Gemini 이미지 모델)
     // 모델 이름이 바뀌어도 되게: 키로 쓸 수 있는 모델 목록에서 이미지 생성 모델을 찾아 차례로 시도
@@ -302,11 +300,22 @@ async function imageModels(key: string): Promise<string[]> {
 }
 
 
-// 비밀키 이름을 조금 다르게 적어도(예: "antrophic key") 찾도록 이름에 관계없이 패턴으로 검색
-function findKey(pattern: RegExp): string | undefined {
-  const env = Deno.env.toObject();
-  const hit = Object.entries(env).find(([k, v]) => pattern.test(k) && !k.startsWith("SUPABASE_") && v.trim());
-  return hit?.[1].trim();
+// 비밀키 이름을 조금 다르게 적어도(예: "antrophic key", "셔플") 찾도록: 이름으로 먼저, 안 되면 값 모양으로
+//   OpenAI: sk-… (sk-ant- 제외) / Claude: sk-ant-… / Gemini: AIza…
+function detectKeys(): Keys {
+  const env = Object.entries(Deno.env.toObject())
+    .filter(([k, v]) => !/^(SUPABASE_|SB_|DENO_)/.test(k) && v.trim())
+    .map(([k, v]) => [k, v.trim()] as const);
+  // 값 모양이 확실하면 그걸 믿고, 모양을 모르는 값만 이름으로 판단 (이름을 잘못 붙여도 됨)
+  const byValue = (re: RegExp) => env.find(([, v]) => re.test(v))?.[1];
+  const unknownShape = ([, v]: readonly [string, string]) => !/^(sk-|AIza)/.test(v);
+  const byName = (re: RegExp) => env.filter(unknownShape).find(([k]) => re.test(k))?.[1];
+  const claude = byValue(/^sk-ant-/) ?? byName(/ant.?h?rop|claude/i);
+  const openai = byValue(/^sk-(?!ant-)/) ?? byName(/openai|gpt/i);
+  const gemini = byValue(/^AIza/) ?? byName(/gemini|google/i);
+  const tag = (v?: string) => (v ? `${v.slice(0, 6)}…(${v.length})` : "-");
+  console.log(`[keys] openai=${tag(openai)} claude=${tag(claude)} gemini=${tag(gemini)}`);
+  return { openai, claude, gemini };
 }
 const ASK = "이 스텝지를 위 양식의 JSON으로 정리해 주세요.";
 
