@@ -628,3 +628,7 @@ a.msg-who { display: block; }
 .chatbar textarea { flex: 1; min-height: 46px; max-height: 120px; padding: 11px 14px; border: 1px solid var(--line-strong); border-radius: 22px; font: inherit; font-size: 16px; resize: none; background: var(--bg); outline: none; }
 .chatbar textarea:focus { border-color: var(--accent); }
 .chatbar .btn.primary { min-height: 46px; padding: 0 16px; }
+
+/* 동기화 · 영상 보고 맞추기 */
+.video-sync { border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 8px; }
+.video-sync .btn { width: 100%; margin: 4px 0 10px; }

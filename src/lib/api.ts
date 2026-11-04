@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import type { Storyboard } from './frames'
 import { normalizeLines, stepNames, type Folder, type Line, type Recognized, type Role, type Song, type Stepsheet, type SyncData } from './types'
 
 export async function listFolders(): Promise<Folder[]> {
@@ -550,6 +551,28 @@ export async function planRequest(lines: string[], request: string): Promise<Pla
   const { data, error } = await supabase.functions.invoke('recognize', { body: { order_request: request, lines } })
   if (error) throw new Error('요청을 이해하지 못했어요. 다시 적어 주세요.')
   if (data?.error) throw new Error(data.error)
+  return parsePlan(data, lines.length)
+}
+/**
+ * 영상 보고 맞추기(고도 추론): 영상에서 뽑은 장면표(시각이 적힌 프레임 격자)를 AI가 보고 줄마다 시작 시각을 찾아 계획으로.
+ * 영상은 올리지 않고 장면표 그림만 보낸다. 1~3분 걸릴 수 있다.
+ */
+export async function videoSync(sheets: { media_type: string; data: string }[], lines: string[], bpm: number, step: number, duration: number): Promise<PlanReply> {
+  const { data, error } = await supabase.functions.invoke('recognize', { body: { video_sync: { frames: sheets, step, duration, bpm }, lines } })
+  if (error) throw new Error('영상을 읽지 못했어요. 영상이 길면 시간이 모자랄 수 있어요. 한 번 더 해 보세요.')
+  if (data?.error) throw new Error(data.error)
+  return parsePlan(data, lines.length)
+}
+/** 유튜브 미리보기 장면(스토리보드)을 서버가 가져다 줌: 스프라이트 그림들 + 격자 정보. 비공개·연령 제한 영상은 안 될 수 있음 */
+export async function ytStoryboard(videoId: string): Promise<Storyboard> {
+  const { data, error } = await supabase.functions.invoke('recognize', { body: { yt_frames: videoId } })
+  if (error) throw new Error('유튜브에서 장면을 가져오지 못했어요. 잠시 뒤 다시 해 보세요.')
+  if (data?.error) throw new Error(data.error)
+  const sb = data as Storyboard
+  if (!Array.isArray(sb?.images) || !sb.images.length || !(sb.interval > 0)) throw new Error('유튜브에서 장면을 가져오지 못했어요')
+  return sb
+}
+function parsePlan(data: Record<string, unknown> | null, nLines: number): PlanReply {
   const num = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : null)
   const plan: PlanReply['plan'] = []
   for (const raw of Array.isArray(data?.plan) ? data.plan : []) {
@@ -557,7 +580,7 @@ export async function planRequest(lines: string[], request: string): Promise<Pla
     if (typeof r?.rest === 'number' && r.rest > 0) plan.push({ rest: Math.min(64, Math.round(r.rest)) })
     else {
       const line = Number(r?.line)
-      if (!Number.isInteger(line) || line < 1 || line > lines.length) continue
+      if (!Number.isInteger(line) || line < 1 || line > nLines) continue
       const item: { line: number; beats?: number; at?: number } = { line }
       const b = num(r.beats)
       if (b && b > 0 && b <= 128) item.beats = Math.round(b)

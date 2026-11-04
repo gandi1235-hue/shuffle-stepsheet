@@ -5,12 +5,13 @@ import YouTubePlayer, { youtubeId } from '../components/YouTubePlayer'
 import SheetTable from '../components/SheetTable'
 import TopBar from '../components/TopBar'
 import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
-import { getFolder, getSheet, planRequest, signedUrl, updateSync } from '../lib/api'
+import { getFolder, getSheet, planRequest, signedUrl, updateSync, videoSync, ytStoryboard } from '../lib/api'
 import { haptic } from '../lib/prefs'
 import { useSpeech } from '../lib/speech'
 import { detectTempo, snapToBeat, type Tempo } from '../lib/tempo'
 import { activeLine, eventsOf, marksFromEvents, savedBpm, savedPlan, withSync, type Folder, type Stepsheet, type SyncEvent, type SyncSource } from '../lib/types'
 import { DEFAULT_BPM, bpmFromEvents, fillEvents, isRest, linesToPlan, orderPromptLines, planIndexOfEvent, planLines, planOf, planText, stepIdxOf, unpinned, type PlanItem } from '../lib/sync'
+import { contactSheets, storyboardSheets } from '../lib/frames'
 
 const fmtT = (x: number) => `${Math.floor(x / 60)}:${Math.floor(x % 60).toString().padStart(2, '0')}`
 const r1 = (x: number) => Math.round(x * 10) / 10
@@ -46,6 +47,7 @@ export default function SyncPage() {
   const speech = useSpeech((t) => setRequest((q) => `${q}${q && !q.endsWith(' ') ? ' ' : ''}${t}`), toast)
   const { listening, busy: hearing, seconds, ok: speechOk, start: startListen, stop: stopListen } = speech
   const [asking, setAsking] = useState(false)
+  const [watching, setWatching] = useState('') // 영상 보고 맞추기 진행 상태 글 ('' = 안 하는 중)
   const touched = useRef(false) // 사용자가 줄을 직접 고쳤는지 (분석이 늦게 끝나도 덮어쓰지 않으려고)
 
   useEffect(() => {
@@ -237,6 +239,45 @@ export default function SyncPage() {
       setAsking(false)
     }
   }
+  /**
+   * 영상 보고 맞추기(고도 추론): 영상의 장면들을 시각을 적은 장면표로 만들고, AI가 그걸 보고 줄마다 시작 시각을 찾는다.
+   * 유튜브면 서버가 유튜브 미리보기 장면(스토리보드)을 가져오고, 올려 둔 영상 파일이면 1초마다 프레임을 뽑는다.
+   */
+  const watchVideo = async () => {
+    if (watching) return
+    try {
+      let fr
+      if (playingYt && ytId) {
+        setWatching('유튜브에서 미리보기 장면 가져오는 중…')
+        const sb = await ytStoryboard(ytId)
+        fr = await storyboardSheets(sb, (d, n) => setWatching(`장면표 만드는 중… ${Math.round((d / n) * 100)}%`))
+      } else if (fileIsVideo && audio) {
+        setWatching('영상에서 장면 뽑는 중… 0%')
+        fr = await contactSheets(audio, (d, n) => setWatching(`영상에서 장면 뽑는 중… ${Math.round((d / n) * 100)}%`))
+      } else throw new Error('유튜브 링크나 영상 파일이 있어야 영상을 볼 수 있어요')
+      setWatching(`GPT가 영상 ${fr.frames}장면을 보고 생각하는 중… (1~3분)`)
+      const r = await videoSync(fr.sheets, orderPromptLines(sheet), bpm, fr.step, fr.duration)
+      const next: PlanItem[] = r.plan
+        .map((p): PlanItem | null => ('rest' in p ? p : stepIdx[p.line - 1] === undefined ? null : { ...p, line: stepIdx[p.line - 1] }))
+        .filter((p): p is PlanItem => p !== null)
+      const first = next.find((p): p is { line: number; at?: number } => !isRest(p) && typeof p.at === 'number')
+      if (!planLines(next).length || !first) throw new Error(r.unclear || '영상에서 스텝 시작을 찾지 못했어요')
+      setPlan(next)
+      setOrderNote(r.note)
+      const rate = r.bpm && r.bpm >= 60 && r.bpm <= 200 ? r.bpm : bpm
+      if (r.bpm) setBpm(rate)
+      push(fillEvents(sheet, next, first.at ?? 0, rate))
+      setPhase('fix')
+      touched.current = true
+      setAskOpen(false)
+      haptic([15, 60, 15])
+      toast(`영상을 보고 맞췄어요${r.note ? ` · ${r.note}` : ''}. 틀린 줄은 그 줄이 시작될 때 눌러 고치세요`)
+    } catch (e) {
+      toast((e as Error).message)
+    } finally {
+      setWatching('')
+    }
+  }
   const resetOrder = () => {
     setPlan(linesToPlan(stepIdx))
     setOrderNote('')
@@ -292,6 +333,20 @@ export default function SyncPage() {
         <div className="panel-desc">
           지금 순서: {orderText}
           {orderNote ? ` · ${orderNote}` : ''}
+        </div>
+        <div className="video-sync">
+          <div className="panel-desc">
+            <b>🎬 영상 보고 맞추기 (고도 추론)</b>
+            <br />
+            {playingYt && ytId
+              ? 'GPT가 유튜브 영상의 장면들을 보고 줄마다 시작 시각을 찾아요. 1~3분 걸려요. 틀린 줄은 나중에 눌러 고치면 돼요.'
+              : fileIsVideo
+                ? 'GPT가 올려 둔 영상을 보고 줄마다 시작 시각을 찾아요. 1~3분 걸려요.'
+                : '유튜브 링크나 영상 파일이 있는 스텝지에서 쓸 수 있어요.'}
+          </div>
+          <button type="button" className="btn" disabled={Boolean(watching) || asking || !((playingYt && ytId) || fileIsVideo)} onClick={watchVideo}>
+            {watching || '🎬 영상 보고 맞추기'}
+          </button>
         </div>
         <div className="row-btns" style={{ display: 'flex', gap: 8 }}>
           {orderChanged && (

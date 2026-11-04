@@ -5,7 +5,7 @@
 //   ANTHROPIC_API_KEY : Claude API 키 (https://console.anthropic.com)
 //   OPENAI_API_KEY    : OpenAI 키 (https://platform.openai.com/api-keys) — 있으면 모든 일(사진 읽기·직접 요청·말로 고치기·아바타·받아 적기)에 GPT를 먼저 씀
 // 글/사진 읽기 우선순위: OpenAI(GPT, 추론 xhigh) → Claude → Gemini. 앞 것이 실패하면 다음 것으로.
-// 선택: OPENAI_TEXT_MODEL (없으면 키로 쓸 수 있는 최신 gpt-5 계열 자동 선택), OPENAI_REASONING (기본 xhigh; 사진 읽기는 OPENAI_PHOTO_REASONING 기본 high),
+// 선택: OPENAI_TEXT_MODEL (없으면 키로 쓸 수 있는 최신 gpt-5 계열 자동 선택), OPENAI_REASONING (기본 xhigh; 사진 읽기는 OPENAI_PHOTO_REASONING 기본 high, 영상 보고 맞추기는 OPENAI_VIDEO_REASONING 기본 xhigh),
 //       OPENAI_STT_MODEL (기본 gpt-4o-transcribe), OPENAI_IMAGE_MODEL (기본 gpt-image-1), OPENAI_IMAGE_QUALITY (기본 medium),
 //       GEMINI_MODEL (기본 gemini-2.5-flash), CLAUDE_MODEL (기본 claude-sonnet-5-5)
 
@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     if (!who) {
       return new Response(JSON.stringify({ error: "로그인이 필요해요" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string } };
+    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string }; video_sync?: { frames: { media_type: string; data: string }[]; step: number; duration: number; bpm?: number }; yt_frames?: string };
     const keys = detectKeys();
     const { gemini: geminiKey, openai: openaiKey } = keys;
 
@@ -220,6 +220,47 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ lines: Array.isArray(j.lines) ? j.lines : null, note: j.note ?? "", unclear: j.unclear ?? "" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // 유튜브 미리보기 장면 모드: { yt_frames: videoId } — 유튜브가 탐색 바 미리보기용으로 공개해 둔 스토리보드(스프라이트 격자)를 가져다 줌
+    if (body.yt_frames) {
+      const vid = String(body.yt_frames).trim();
+      if (!/^[\w-]{11}$/.test(vid)) throw new Error("유튜브 영상 ID가 이상해요");
+      const sb = await ytStoryboard(vid);
+      return new Response(JSON.stringify(sb), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // 영상 보고 맞추기 모드(고도 추론): { video_sync: { frames(장면표 그림들), step, duration, bpm }, lines } — AI가 장면표를 보고 줄마다 시작 시각을 찾아 계획으로
+    if (body.video_sync?.frames?.length && body.lines?.length) {
+      const vs = body.video_sync;
+      const frames = vs.frames.slice(0, 24);
+      const bpm = typeof vs.bpm === "number" && vs.bpm > 0 ? vs.bpm : null;
+      const beat = bpm ? 60 / bpm : null;
+      const sys = `당신은 셔플댄스 영상을 보고 스텝지의 각 줄이 영상에서 언제 시작되는지 찾아 주는 전문가입니다. 셔플댄스의 기본 스텝(런닝맨: 제자리에서 무릎을 들며 뒤로 미끄러지듯 달리는 동작, 티스텝: 옆으로 발뒤꿈치·발끝을 비틀며 이동, 찰스턴: 앞뒤로 차며 몸을 비트는 동작, 크리스크로스: 두 발을 교차하는 점프, 킥: 발 차기, 스핀/턴: 회전, 글라이드: 미끄러지듯 이동, 킥볼체인지)을 화면에서 알아볼 수 있습니다.
+
+[입력]
+- 장면표 그림 여러 장: 영상에서 일정 간격으로 뽑은 프레임을 시간순(왼쪽→오른쪽, 위→아래)으로 붙인 것. 각 칸 왼쪽 위 노란 글씨가 그 장면의 시각(초)입니다.
+- 스텝 줄 목록: 번호는 1부터, 괄호 안은 그 줄의 박수. 한 줄은 그 박수만큼 이어집니다.
+- 박자(BPM)가 주어지면 한 박 = 60/BPM 초이고, 줄의 길이 = 박수 × 한 박입니다.
+
+[할 일]
+1. 영상에서 춤이 실제로 시작되는 순간(전주 동안 서 있거나 준비 자세인 구간은 쉼)을 찾습니다.
+2. 스텝지 순서대로 각 줄의 동작이 시작되는 시각을 찾습니다. 줄이 반복되면(후렴 두 번 등) 같은 줄 번호를 여러 번 적고, 건너뛰면 뺍니다. 줄 사이에 멈춤·전환이 있으면 그만큼 시간이 비어도 됩니다.
+3. 춤은 박자에 맞춰 추므로, 첫 줄 시작 시각을 기준으로 다음 줄들은 보통 "앞 줄 시작 + 앞 줄 박수 × 한 박"에 시작합니다. 장면표에서 동작이 바뀌는 지점으로 이를 확인·보정하세요. 장면 간격이 ${vs.step}초라 시각은 그 절반 정도 오차가 있을 수 있으니, 박자 격자에 맞게 다듬어 소수 첫째 자리까지 적습니다.
+4. 스텝 줄의 박수는 목록에 적힌 그대로입니다. 바꾸지 않습니다.
+
+[출력] 반드시 JSON만:
+{"plan":[{"line":1,"at":12.3},{"line":2,"at":16.1}, ...], "start_at": 첫 줄 시작 초, "bpm": 영상으로 짐작한 BPM 또는 null, "confidence":"high|medium|low", "note":"한 줄 요약(한국어, 30자 내)", "unclear":""}
+- plan은 춤추는 순서대로, 모든 항목에 at(초)을 넣습니다.
+- 영상이 이 스텝지의 춤이 아니거나 사람이 안 보이면 plan을 빈 배열로 두고 unclear에 이유를 한국어로 짧게 적습니다.`;
+      const ask = `[스텝 줄 목록]\n${body.lines.map((l) => String(l)).join("\n")}\n\n[영상 정보]\n길이 ${vs.duration}초, ${vs.step}초마다 한 장면, 장면표 ${frames.length}장(시간순).${bpm ? ` 박자 ${bpm} BPM → 한 박 ${beat!.toFixed(3)}초, 4박 ${(beat! * 4).toFixed(2)}초, 8박 ${(beat! * 8).toFixed(2)}초.` : " 박자는 아직 모릅니다."}\n\n장면표를 보고 각 줄의 시작 시각을 찾아 주세요.`;
+      const t = await askAI(frames, ask, sys, keys, "video");
+      const s0 = t.indexOf("{"); const e0 = t.lastIndexOf("}");
+      const j = s0 >= 0 ? JSON.parse(t.slice(s0, e0 + 1)) : {};
+      const plan = Array.isArray(j.plan) ? j.plan : [];
+      const order = plan.filter((p: { line?: number }) => typeof p?.line === "number").map((p: { line: number }) => p.line);
+      console.log(`[video] plan ${plan.length} items, confidence=${j.confidence ?? "?"}, note=${j.note ?? ""}`);
+      return new Response(JSON.stringify({ plan, order, start_at: j.start_at ?? null, bpm: j.bpm ?? null, note: j.note ? `${j.note}${j.confidence && j.confidence !== "high" ? ` (확신 ${j.confidence === "low" ? "낮음" : "보통"})` : ""}` : "", unclear: j.unclear ?? "" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // 직접 요청 모드: { order_request, lines } — 비정형 요청을 춤추는 계획(줄 순서·쉼·길이·시작 시각·박자)으로
     if (body.order_request && body.lines?.length) {
       const sys = `당신은 셔플댄스 스텝지와 실제 영상/노래의 타이밍을 맞춰 주는 도우미입니다. 스텝 줄 목록(번호는 1부터, 괄호 안은 그 줄의 박수)과 사용자의 요청(말로 한 것을 받아 적은 글이라 띄어쓰기·조사가 어색할 수 있음)을 읽고, 영상/노래에서 실제로 춤추는 차례를 plan 배열로 적습니다.
@@ -319,8 +360,60 @@ function detectKeys(): Keys {
 }
 const ASK = "이 스텝지를 위 양식의 JSON으로 정리해 주세요.";
 
+/**
+ * 유튜브 스토리보드: 영상 페이지의 playerStoryboardSpecRenderer.spec 을 읽어 스프라이트 그림(JPEG)들을 가져온다.
+ * spec = "기본URL|w#h#frames#cols#rows#_#이름#sigh|..." (레벨마다 한 덩어리). 320×180 레벨을 우선, 없으면 가장 큰 것
+ */
+async function ytStoryboard(vid: string) {
+  const res = await fetch(`https://www.youtube.com/watch?v=${vid}&hl=ko`, { headers: { "Accept-Language": "ko,en;q=0.8" } });
+  const html = await res.text();
+  const m = html.match(/"playerStoryboardSpecRenderer":\{"spec":"((?:[^"\\]|\\.)*)"/);
+  const lenM = html.match(/"lengthSeconds":"(\d+)"/);
+  if (!m || !lenM) {
+    console.error(`[yt] no storyboard for ${vid}: status ${res.status}, len ${html.length}, ${/consent/i.test(res.url) ? "consent page" : "no spec"}`);
+    throw new Error("유튜브에서 미리보기 장면을 가져오지 못했어요 (비공개·연령 제한 영상이거나 유튜브가 막았어요)");
+  }
+  const spec: string = JSON.parse(`"${m[1]}"`);
+  const duration = Number(lenM[1]);
+  const [base, ...levels] = spec.split("|");
+  type Lv = { i: number; w: number; h: number; frames: number; cols: number; rows: number; name: string; sigh: string };
+  const parsed: Lv[] = levels
+    .map((l, i) => {
+      const a = l.split("#");
+      if (a.length !== 8) return null;
+      return { i, w: +a[0], h: +a[1], frames: +a[2], cols: +a[3], rows: +a[4], name: a[6], sigh: a[7] };
+    })
+    .filter((x): x is Lv => !!x && x.frames > 1 && x.cols > 0 && x.rows > 0);
+  if (!parsed.length) throw new Error("유튜브 미리보기 장면 정보를 읽지 못했어요");
+  const usable = parsed.filter((l) => l.frames >= 20);
+  const pick = usable.find((l) => l.w === 320) ?? [...usable].sort((a, b) => b.w - a.w)[0] ?? parsed[parsed.length - 1];
+  const nImg = Math.ceil(pick.frames / (pick.cols * pick.rows));
+  const urls = Array.from({ length: Math.min(nImg, 40) }, (_, j) => `${base.replace("$L", String(pick.i)).replace("$N", pick.name.replace("$M", String(j)))}&sigh=${pick.sigh}`);
+  console.log(`[yt] ${vid}: ${duration}s, level ${pick.i} ${pick.w}x${pick.h} frames=${pick.frames} grid=${pick.cols}x${pick.rows} images=${urls.length}`);
+  const images = await Promise.all(urls.map(async (u) => {
+    try {
+      const r = await fetch(u);
+      if (!r.ok) {
+        console.error(`[yt] sprite ${r.status}: ${u.slice(0, 80)}`);
+        return "";
+      }
+      return b64(new Uint8Array(await r.arrayBuffer()));
+    } catch (e) {
+      console.error(`[yt] sprite failed: ${(e as Error).message}`);
+      return "";
+    }
+  }));
+  if (!images.some(Boolean)) throw new Error("유튜브 미리보기 그림을 받지 못했어요");
+  return { images, cols: pick.cols, rows: pick.rows, w: pick.w, h: pick.h, total: Math.min(pick.frames, urls.length * pick.cols * pick.rows), interval: duration / pick.frames, duration };
+}
+function b64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
 type Keys = { openai?: string; claude?: string; gemini?: string };
-type Task = "photo" | "plan" | "edit" | "artist";
+type Task = "photo" | "plan" | "edit" | "artist" | "video";
 
 /** 키가 있는 모델을 OpenAI → Claude → Gemini 순으로 시도. 앞 것이 실패하면(모델 없음·한도·시간 초과) 다음 것으로 */
 async function askAI(images: Img[], ask: string, sys: string, keys: Keys, task: Task): Promise<string> {
@@ -370,7 +463,7 @@ async function openaiModel(key: string): Promise<string> {
 /** OpenAI Responses API. 추론 세기는 xhigh(사진 읽기는 high) — 모델이 모르는 값이면 한 단계씩 낮춰 재시도 */
 async function viaOpenAI(images: Img[], key: string, ask: string, sys: string, task: Task): Promise<string> {
   const model = await openaiModel(key);
-  const want = (task === "photo" ? Deno.env.get("OPENAI_PHOTO_REASONING") : Deno.env.get("OPENAI_REASONING"))?.trim() || (task === "photo" ? "high" : "xhigh");
+  const want = (task === "photo" ? Deno.env.get("OPENAI_PHOTO_REASONING") : task === "video" ? Deno.env.get("OPENAI_VIDEO_REASONING") : Deno.env.get("OPENAI_REASONING"))?.trim() || (task === "photo" ? "high" : "xhigh");
   const ladder = ["xhigh", "high", "medium", "low"];
   const efforts = [want, ...ladder.slice(Math.max(0, ladder.indexOf(want) + 1))].filter((v, i, a) => a.indexOf(v) === i);
   const content = [
