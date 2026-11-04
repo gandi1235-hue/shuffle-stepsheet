@@ -18,7 +18,7 @@ export default function Login() {
   const [err, setErr] = useState('')
 
   const kakao = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'kakao', options: { redirectTo: appUrl() } })
+    const { error } = await supabase.auth.signInWithOAuth({ provider: 'kakao', options: { redirectTo: appUrl(), scopes: 'profile_nickname' } })
     if (error) setErr(error.message)
   }
 
