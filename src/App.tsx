@@ -1,6 +1,7 @@
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import UpdateBanner from './components/UpdateBanner'
 import LevelUpWatcher from './components/LevelUp'
+import JobWatcher from './components/JobWatcher'
 import { ToastProvider } from './components/ui'
 import { AuthProvider, useAuth } from './lib/auth'
 import { applyPrefs, loadPrefs } from './lib/prefs'
@@ -34,6 +35,7 @@ function Gate() {
   return (
     <>
     <LevelUpWatcher />
+    <JobWatcher />
     <Routes>
       <Route path="/" element={pending ? <Navigate to={`/join/${pending}`} replace /> : <StartPage />} />
       <Route path="/join/:code" element={<JoinPage />} />

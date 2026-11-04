@@ -128,3 +128,23 @@ export function orderPromptLines(sheet: Lines): string[] {
   })
   return out
 }
+/**
+ * AI 답(줄 번호는 1부터)을 lines 인덱스 계획으로 바꾸고 시각을 채움. 첫 줄 시각(at)이 없으면 t0부터.
+ * 쓸 만한 줄이 없으면 null
+ */
+export function planFromReply(
+  sheet: Lines,
+  reply: { plan: PlanItem[]; bpm: number | null; startAt: number | null },
+  bpm: number,
+  t0: number,
+): { plan: PlanItem[]; events: SyncEvent[]; rate: number } | null {
+  const idx = stepIdxOf(sheet)
+  const plan = reply.plan
+    .map((p): PlanItem | null => (isRest(p) ? p : idx[p.line - 1] === undefined ? null : { ...p, line: idx[p.line - 1] }))
+    .filter((p): p is PlanItem => p !== null)
+  if (!planLines(plan).length) return null
+  const rate = reply.bpm && reply.bpm >= 60 && reply.bpm <= 200 ? reply.bpm : bpm
+  const first = plan.find((p): p is { line: number; at?: number } => !isRest(p) && typeof p.at === 'number')
+  const start = reply.startAt !== null && reply.startAt >= 0 ? reply.startAt : (first?.at ?? t0)
+  return { plan, events: fillEvents(sheet, plan, start, rate), rate }
+}

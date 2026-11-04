@@ -10,7 +10,8 @@ import { haptic } from '../lib/prefs'
 import { useSpeech } from '../lib/speech'
 import { detectTempo, snapToBeat, type Tempo } from '../lib/tempo'
 import { activeLine, eventsOf, marksFromEvents, savedBpm, savedPlan, withSync, type Folder, type Stepsheet, type SyncEvent, type SyncSource } from '../lib/types'
-import { DEFAULT_BPM, bpmFromEvents, fillEvents, isRest, linesToPlan, orderPromptLines, planIndexOfEvent, planLines, planOf, planText, stepIdxOf, unpinned, type PlanItem } from '../lib/sync'
+import { DEFAULT_BPM, bpmFromEvents, fillEvents, foldBpm, linesToPlan, orderPromptLines, planFromReply, planIndexOfEvent, planLines, planOf, planText, stepIdxOf, unpinned, isRest, type PlanItem } from '../lib/sync'
+import { JOB_EVENT, addJob, jobFor, removeJob } from '../lib/jobs'
 import { contactSheets, storyboardSheets } from '../lib/frames'
 import DeepToggle from '../components/DeepToggle'
 
@@ -49,6 +50,8 @@ export default function SyncPage() {
   const { listening, busy: hearing, seconds, ok: speechOk, start: startListen, stop: stopListen } = speech
   const [asking, setAsking] = useState(false)
   const [watching, setWatching] = useState('') // 영상 보고 맞추기 진행 상태 글 ('' = 안 하는 중)
+  const [jobId, setJobId] = useState<string | null>(() => jobFor(id)?.id ?? null) // 서버에서 돌고 있는 영상 보고 맞추기
+  const [stamps, setStamps] = useState<number[] | null>(null) // 8박마다 찍기 중이면 찍은 시각들
   const touched = useRef(false) // 사용자가 줄을 직접 고쳤는지 (분석이 늦게 끝나도 덮어쓰지 않으려고)
 
   useEffect(() => {
@@ -71,6 +74,24 @@ export default function SyncPage() {
       .catch((e) => setErr(e.message))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  // 서버에서 돌던 영상 보고 맞추기가 끝나 저장되면 그 결과를 불러옴
+  useEffect(() => {
+    const onDone = (e: Event) => {
+      const d = (e as CustomEvent<{ sheetId: string }>).detail
+      if (d?.sheetId !== id) return
+      setJobId(null)
+      setWatching('')
+      getSheet(id).then((s) => {
+        if (!s) return
+        setSheet(s)
+        load(s, source === 'youtube' || !s.audio_path ? 'yt' : 'file', tempo)
+      })
+    }
+    window.addEventListener(JOB_EVENT, onDone)
+    return () => window.removeEventListener(JOB_EVENT, onDone)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, source, tempo])
 
   /** 저장된 동기화를 불러와 시작 상태 만들기 */
   const load = (s: Stepsheet, src: SyncSource, tp: Tempo | null) => {
@@ -256,18 +277,23 @@ export default function SyncPage() {
         setWatching('영상에서 장면 뽑는 중… 0%')
         fr = await contactSheets(audio, (d, n) => setWatching(`영상에서 장면 뽑는 중… ${Math.round((d / n) * 100)}%`))
       } else throw new Error('유튜브 링크나 영상 파일이 있어야 영상을 볼 수 있어요')
-      setWatching(`GPT가 영상 ${fr.frames}장면을 보고 생각하는 중… (1~3분)`)
-      const r = await videoSync(fr.sheets, orderPromptLines(sheet), bpm, fr.step, fr.duration)
-      const next: PlanItem[] = r.plan
-        .map((p): PlanItem | null => ('rest' in p ? p : stepIdx[p.line - 1] === undefined ? null : { ...p, line: stepIdx[p.line - 1] }))
-        .filter((p): p is PlanItem => p !== null)
-      const first = next.find((p): p is { line: number; at?: number } => !isRest(p) && typeof p.at === 'number')
-      if (!planLines(next).length || !first) throw new Error(r.unclear || '영상에서 스텝 시작을 찾지 못했어요')
-      setPlan(next)
+      setWatching(`GPT에게 영상 ${fr.frames}장면을 보내는 중…`)
+      const r = await videoSync(sheet.id, fr.sheets, orderPromptLines(sheet), bpm, fr.step, fr.duration)
+      if ('jobId' in r) {
+        // 서버에서 이어서 돎: 화면을 떠나거나 앱을 꺼도 끝나면 저장되고 알려 줌
+        addJob({ id: r.jobId, sheetId: sheet.id, kind: 'video_sync', src: playingYt ? 'yt' : 'file', bpm, title: sheet.song?.title ?? '스텝지', started: Date.now() })
+        setJobId(r.jobId)
+        setWatching('')
+        setAskOpen(false)
+        toast('GPT가 영상을 보고 있어요 (1~3분). 다른 화면에 가 있어도 끝나면 저장되고 알려 드려요')
+        return
+      }
+      const out = planFromReply(sheet, r, bpm, events[0]?.t ?? 0)
+      if (!out) throw new Error(r.unclear || '영상에서 스텝 시작을 찾지 못했어요')
+      setPlan(out.plan)
       setOrderNote(r.note)
-      const rate = r.bpm && r.bpm >= 60 && r.bpm <= 200 ? r.bpm : bpm
-      if (r.bpm) setBpm(rate)
-      push(fillEvents(sheet, next, first.at ?? 0, rate))
+      setBpm(out.rate)
+      push(out.events)
       setPhase('fix')
       touched.current = true
       setAskOpen(false)
@@ -278,6 +304,41 @@ export default function SyncPage() {
     } finally {
       setWatching('')
     }
+  }
+  const cancelJob = () => {
+    if (jobId) removeJob(jobId)
+    setJobId(null)
+    toast('영상 보고 맞추기를 취소했어요')
+  }
+  /**
+   * 8박마다 찍기: 노래를 들으며 한 구절(8박)이 시작될 때마다 누른다. 처음 찍은 순간이 1번 줄 시작,
+   * 찍은 간격의 중간값으로 BPM을 정확히 잡고(8박 = 간격) 그 박자로 전체를 다시 채운다
+   */
+  const stamp = () => {
+    const tn = r1(now())
+    setStamps((st) => [...(st ?? []), tn])
+    haptic(12)
+  }
+  const finishStamps = () => {
+    const st = stamps ?? []
+    setStamps(null)
+    if (!st.length) return
+    let rate = bpm
+    if (st.length >= 2) {
+      const gaps = st.slice(1).map((t, i) => t - st[i]).filter((g) => g > 0.5)
+      if (gaps.length) {
+        gaps.sort((a, b) => a - b)
+        rate = foldBpm((8 * 60) / gaps[Math.floor(gaps.length / 2)])
+        setBpm(rate)
+      }
+    }
+    const next = unpinned(plan)
+    setPlan(next)
+    push(fillEvents(sheet, next, st[0], rate))
+    setPhase('fix')
+    touched.current = true
+    haptic([15, 60, 15])
+    toast(st.length >= 2 ? `${st.length}번 찍어 ${Math.round(rate * 10) / 10} BPM으로 맞췄어요 (1번 줄 ${fmtT(st[0])}부터)` : `1번 줄 시작을 ${fmtT(st[0])}로 잡았어요`)
   }
   const resetOrder = () => {
     setPlan(linesToPlan(stepIdx))
@@ -346,7 +407,7 @@ export default function SyncPage() {
                 ? 'GPT가 올려 둔 영상을 보고 줄마다 시작 시각을 찾아요. 1~3분 걸려요.'
                 : '유튜브 링크나 영상 파일이 있는 스텝지에서 쓸 수 있어요.'}
           </div>
-          <button type="button" className="btn" disabled={Boolean(watching) || asking || !((playingYt && ytId) || fileIsVideo)} onClick={watchVideo}>
+          <button type="button" className="btn" disabled={Boolean(watching) || Boolean(jobId) || asking || !((playingYt && ytId) || fileIsVideo)} onClick={watchVideo}>
             {watching || '🎬 영상 보고 맞추기'}
           </button>
         </div>
@@ -391,6 +452,35 @@ export default function SyncPage() {
               )}
               {orderChanged && <span className="order-chip">순서 {orderText}</span>}
             </div>
+            {jobId && (
+              <div className="job-chip">
+                🎬 GPT가 영상을 보고 있어요… 끝나면 저장되고 알려 드려요. 다른 화면에 가도 돼요.
+                <button type="button" className="btn tiny" onClick={cancelJob}>
+                  취소
+                </button>
+              </div>
+            )}
+            {stamps !== null ? (
+              <>
+                <div className="sync-hint">
+                  노래를 들으며 <b>한 구절(8박)이 시작될 때마다</b> 찍으세요. 처음 찍는 순간이 1번 줄 시작이에요. 서너 번만 찍어도 박자가 잡혀요.
+                </div>
+                <div className="row">
+                  <button type="button" className="btn next" onClick={stamp}>
+                    👣 찍기{stamps.length ? ` (${stamps.length}번)` : ''}
+                  </button>
+                </div>
+                <div className="row">
+                  <button type="button" className="btn" onClick={() => setStamps(null)}>
+                    그만두기
+                  </button>
+                  <button type="button" className="btn save" onClick={finishStamps} disabled={!stamps.length}>
+                    다 찍었어요
+                  </button>
+                </div>
+              </>
+            ) : (
+            <>
             <div className="sync-hint">
               {phase === 'first' ? (
                 <>
@@ -406,6 +496,11 @@ export default function SyncPage() {
               <div className="row">
                 <button type="button" className="btn next" onClick={markFirst}>
                   여기부터 ({firstNo}번 줄 시작)
+                </button>
+                <button type="button" className="btn ask-btn" onClick={() => setStamps([])}>
+                  8박
+                  <br />
+                  찍기
                 </button>
                 <button type="button" className="btn ask-btn" onClick={() => setAskOpen(true)}>
                   직접
@@ -433,6 +528,9 @@ export default function SyncPage() {
                   <button type="button" className="btn" onClick={() => setAskOpen(true)}>
                     직접 요청
                   </button>
+                  <button type="button" className="btn" onClick={() => setStamps([])}>
+                    8박 찍기
+                  </button>
                   <button type="button" className="btn" onClick={undo} disabled={!history.length}>
                     되돌리기
                   </button>
@@ -446,6 +544,8 @@ export default function SyncPage() {
                   </button>
                 </div>
               </>
+            )}
+            </>
             )}
           </div>
           {playingYt && ytId && <YouTubePlayer videoId={ytId} name={sheet.song?.title ?? ''} onTime={setT} handle={player} />}

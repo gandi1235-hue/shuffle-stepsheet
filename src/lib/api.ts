@@ -558,11 +558,19 @@ export async function planRequest(lines: string[], request: string): Promise<Pla
  * 영상 보고 맞추기(고도 추론): 영상에서 뽑은 장면표(시각이 적힌 프레임 격자)를 AI가 보고 줄마다 시작 시각을 찾아 계획으로.
  * 영상은 올리지 않고 장면표 그림만 보낸다. 1~3분 걸릴 수 있다.
  */
-export async function videoSync(sheets: { media_type: string; data: string }[], lines: string[], bpm: number, step: number, duration: number): Promise<PlanReply> {
-  const { data, error } = await supabase.functions.invoke('recognize', { body: { video_sync: { frames: sheets, step, duration, bpm }, lines, deep: deepAi() } })
+export async function videoSync(sheetId: string, sheets: { media_type: string; data: string }[], lines: string[], bpm: number, step: number, duration: number): Promise<{ jobId: string } | PlanReply> {
+  const { data, error } = await supabase.functions.invoke('recognize', { body: { video_sync: { frames: sheets, step, duration, bpm }, lines, deep: deepAi(), async: true, sheet_id: sheetId } })
   if (error) throw new Error('영상을 읽지 못했어요. 영상이 길면 시간이 모자랄 수 있어요. 한 번 더 해 보세요.')
   if (data?.error) throw new Error(data.error)
+  if (typeof data?.job_id === 'string') return { jobId: data.job_id }
   return parsePlan(data, lines.length)
+}
+/** 서버에서 이어서 도는 AI 작업 상태 */
+export type AiJob = { id: string; status: 'running' | 'done' | 'failed'; result: Record<string, unknown> | null; error: string | null }
+export async function getJob(id: string): Promise<AiJob | null> {
+  const { data, error } = await supabase.from('ai_jobs').select('id,status,result,error').eq('id', id).maybeSingle()
+  if (error) throw error
+  return (data as AiJob | null) ?? null
 }
 /** 유튜브 미리보기 장면(스토리보드)을 서버가 가져다 줌: 스프라이트 그림들 + 격자 정보. 비공개·연령 제한 영상은 안 될 수 있음 */
 export async function ytStoryboard(videoId: string): Promise<Storyboard> {
@@ -573,7 +581,7 @@ export async function ytStoryboard(videoId: string): Promise<Storyboard> {
   if (!Array.isArray(sb?.images) || !sb.images.length || !(sb.interval > 0)) throw new Error('유튜브에서 장면을 가져오지 못했어요')
   return sb
 }
-function parsePlan(data: Record<string, unknown> | null, nLines: number): PlanReply {
+export function parsePlan(data: Record<string, unknown> | null, nLines: number): PlanReply {
   const num = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : null)
   const plan: PlanReply['plan'] = []
   for (const raw of Array.isArray(data?.plan) ? data.plan : []) {

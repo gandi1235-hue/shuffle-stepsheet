@@ -63,13 +63,13 @@ Deno.serve(async (req) => {
     // 로그인한 사람만: 앱이 보낸 사용자 토큰을 Auth 서버에 확인한다 (공개 키만으로는 못 씀)
     const auth = req.headers.get("Authorization") ?? "";
     const apikey = req.headers.get("apikey") || Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
-    const who = auth.startsWith("Bearer ")
-      ? await fetch(`${Deno.env.get("SUPABASE_URL")}/auth/v1/user`, { headers: { apikey, Authorization: auth } }).then((r) => r.ok).catch(() => false)
-      : false;
-    if (!who) {
+    const who: { id?: string } | null = auth.startsWith("Bearer ")
+      ? await fetch(`${Deno.env.get("SUPABASE_URL")}/auth/v1/user`, { headers: { apikey, Authorization: auth } }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+      : null;
+    if (!who?.id) {
       return new Response(JSON.stringify({ error: "로그인이 필요해요" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string }; video_sync?: { frames: { media_type: string; data: string }[]; step: number; duration: number; bpm?: number }; yt_frames?: string; deep?: boolean };
+    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string }; video_sync?: { frames: { media_type: string; data: string }[]; step: number; duration: number; bpm?: number }; yt_frames?: string; deep?: boolean; async?: boolean; sheet_id?: string };
     const keys = detectKeys();
     keys.deep = body.deep === true; // 고급 추론(xhigh) 켰는지. 기본은 빠른 모델
     const { gemini: geminiKey, openai: openaiKey } = keys;
@@ -254,13 +254,28 @@ Deno.serve(async (req) => {
 - plan은 춤추는 순서대로, 모든 항목에 at(초)을 넣습니다.
 - 영상이 이 스텝지의 춤이 아니거나 사람이 안 보이면 plan을 빈 배열로 두고 unclear에 이유를 한국어로 짧게 적습니다.`;
       const ask = `[스텝 줄 목록]\n${body.lines.map((l) => String(l)).join("\n")}\n\n[영상 정보]\n길이 ${vs.duration}초, ${vs.step}초마다 한 장면, 장면표 ${frames.length}장(시간순).${bpm ? ` 박자 ${bpm} BPM → 한 박 ${beat!.toFixed(3)}초, 4박 ${(beat! * 4).toFixed(2)}초, 8박 ${(beat! * 8).toFixed(2)}초.` : " 박자는 아직 모릅니다."}\n\n장면표를 보고 각 줄의 시작 시각을 찾아 주세요.`;
-      const t = await askAI(frames, ask, sys, keys, "video");
-      const s0 = t.indexOf("{"); const e0 = t.lastIndexOf("}");
-      const j = s0 >= 0 ? JSON.parse(t.slice(s0, e0 + 1)) : {};
-      const plan = Array.isArray(j.plan) ? j.plan : [];
-      const order = plan.filter((p: { line?: number }) => typeof p?.line === "number").map((p: { line: number }) => p.line);
-      console.log(`[video] plan ${plan.length} items, confidence=${j.confidence ?? "?"}, note=${j.note ?? ""}`);
-      return new Response(JSON.stringify({ plan, order, start_at: j.start_at ?? null, bpm: j.bpm ?? null, note: j.note ? `${j.note}${j.confidence && j.confidence !== "high" ? ` (확신 ${j.confidence === "low" ? "낮음" : "보통"})` : ""}` : "", unclear: j.unclear ?? "" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const run = async () => {
+        const t = await askAI(frames, ask, sys, keys, "video");
+        const s0 = t.indexOf("{"); const e0 = t.lastIndexOf("}");
+        const j = s0 >= 0 ? JSON.parse(t.slice(s0, e0 + 1)) : {};
+        const plan = Array.isArray(j.plan) ? j.plan : [];
+        const order = plan.filter((p: { line?: number }) => typeof p?.line === "number").map((p: { line: number }) => p.line);
+        console.log(`[video] plan ${plan.length} items, confidence=${j.confidence ?? "?"}, note=${j.note ?? ""}`);
+        return { plan, order, start_at: j.start_at ?? null, bpm: j.bpm ?? null, note: j.note ? `${j.note}${j.confidence && j.confidence !== "high" ? ` (확신 ${j.confidence === "low" ? "낮음" : "보통"})` : ""}` : "", unclear: j.unclear ?? "" };
+      };
+      // 오래 걸리는 일: 앱이 화면을 떠나거나 꺼져도 서버에서 이어서 돌리고 결과를 ai_jobs에 남김 (앱은 작업 번호로 확인)
+      if (body.async) {
+        const job = await jobs.create(who.id, body.sheet_id ?? null, "video_sync");
+        if (job) {
+          EdgeRuntime.waitUntil(
+            run()
+              .then((r) => jobs.finish(job, r))
+              .catch((e) => jobs.fail(job, (e as Error).message)),
+          );
+          return new Response(JSON.stringify({ job_id: job }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+      return new Response(JSON.stringify(await run()), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // 직접 요청 모드: { order_request, lines } — 비정형 요청을 춤추는 계획(줄 순서·쉼·길이·시작 시각·박자)으로
@@ -413,6 +428,46 @@ function b64(bytes: Uint8Array): string {
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(bin);
 }
+
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
+
+/** ai_jobs 표 읽고 쓰기 (서비스 키로). 표가 없거나 키가 없으면 null을 돌려 동기 방식으로 처리 */
+const jobs = {
+  headers() {
+    const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SECRET_KEYS")?.split(",")[0]?.trim() ?? "";
+    return key ? { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" } : null;
+  },
+  async create(userId: string, sheetId: string | null, kind: string): Promise<string | null> {
+    const h = this.headers();
+    if (!h) return null;
+    try {
+      const res = await fetch(`${Deno.env.get("SUPABASE_URL")}/rest/v1/ai_jobs`, { method: "POST", headers: { ...h, Prefer: "return=representation" }, body: JSON.stringify({ created_by: userId, sheet_id: sheetId, kind }) });
+      const j = await res.json();
+      if (!res.ok) {
+        console.error(`[jobs] create ${res.status}: ${JSON.stringify(j).slice(0, 200)}`);
+        return null;
+      }
+      return j?.[0]?.id ?? null;
+    } catch (e) {
+      console.error(`[jobs] create failed: ${(e as Error).message}`);
+      return null;
+    }
+  },
+  async update(id: string, patch: Record<string, unknown>) {
+    const h = this.headers();
+    if (!h) return;
+    const res = await fetch(`${Deno.env.get("SUPABASE_URL")}/rest/v1/ai_jobs?id=eq.${id}`, { method: "PATCH", headers: h, body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }) });
+    if (!res.ok) console.error(`[jobs] update ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  },
+  finish(id: string, result: unknown) {
+    console.log(`[jobs] ${id} done`);
+    return this.update(id, { status: "done", result });
+  },
+  fail(id: string, error: string) {
+    console.error(`[jobs] ${id} failed: ${error}`);
+    return this.update(id, { status: "failed", error });
+  },
+};
 
 type Keys = { openai?: string; claude?: string; gemini?: string; deep?: boolean };
 type Task = "photo" | "plan" | "edit" | "artist" | "video";

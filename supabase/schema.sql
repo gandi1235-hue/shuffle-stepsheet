@@ -195,3 +195,20 @@ create policy "avatars: 모두 읽기" on storage.objects for select using (buck
 create policy "avatars: 본인 올리기" on storage.objects for insert with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "avatars: 본인 수정" on storage.objects for update using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "avatars: 본인 삭제" on storage.objects for delete using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- AI 긴 작업(영상 보고 맞추기 등): 함수가 서버에서 이어서 돌리고 결과를 여기 남김. 앱은 자기 작업만 읽음(쓰기는 함수의 서비스 키만)
+create table if not exists ai_jobs (
+  id uuid primary key default gen_random_uuid(),
+  created_by uuid not null references auth.users(id) on delete cascade,
+  sheet_id uuid references stepsheets(id) on delete cascade,
+  kind text not null,
+  status text not null default 'running' check (status in ('running', 'done', 'failed')),
+  result jsonb,
+  error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists ai_jobs_owner_idx on ai_jobs (created_by, created_at desc);
+alter table ai_jobs enable row level security;
+drop policy if exists "ai_jobs: 본인 읽기" on ai_jobs;
+create policy "ai_jobs: 본인 읽기" on ai_jobs for select using (created_by = auth.uid());
