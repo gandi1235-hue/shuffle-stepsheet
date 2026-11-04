@@ -64,9 +64,31 @@ Deno.serve(async (req) => {
     if (!who) {
       return new Response(JSON.stringify({ error: "로그인이 필요해요" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[] };
+    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string } };
     const geminiKey = findKey(/gemini|google/i);
     const claudeKey = findKey(/ant.?h?rop|claude/i);
+
+    // 아바타 모드: { avatar: {media_type, data} } — 사진 속 사람을 귀여운 캐릭터 아바타로 (Gemini 이미지 모델)
+    if (body.avatar?.data) {
+      if (!geminiKey) throw new Error("AI 아바타는 Gemini 키가 있어야 만들 수 있어요");
+      const model = Deno.env.get("GEMINI_IMAGE_MODEL") ?? "gemini-2.5-flash-image";
+      const prompt = "Turn the person in this photo into a cute, friendly 3D-cartoon style avatar (soft Pixar-like sticker look). Head and shoulders, centered, facing the camera, smiling. Keep their recognizable features: hair style and color, glasses, face shape, skin tone, age. Plain soft pastel background, square 1:1, no text, no watermark.";
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ inline_data: { mime_type: body.avatar.media_type, data: body.avatar.data } }, { text: prompt }] }],
+          generationConfig: { responseModalities: ["IMAGE", "TEXT"], imageConfig: { aspectRatio: "1:1" } },
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.error?.message ?? `Gemini 오류 ${res.status}`);
+      type Part = { inlineData?: { mimeType?: string; data: string }; inline_data?: { mime_type?: string; data: string } };
+      const parts: Part[] = j.candidates?.[0]?.content?.parts ?? [];
+      const img = parts.map((p) => p.inlineData ?? p.inline_data).find((x) => x?.data);
+      if (!img) throw new Error("아바타를 만들지 못했어요. 얼굴이 잘 보이는 사진으로 다시 해 보세요");
+      return new Response(JSON.stringify({ image: img.data, media_type: (img as { mimeType?: string }).mimeType ?? (img as { mime_type?: string }).mime_type ?? "image/png" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     // 순서 계획 모드: { order_request, lines } — 비정형 요청을 춤추는 순서(줄 번호 목록)로
     if (body.order_request && body.lines?.length) {

@@ -161,3 +161,37 @@ begin
   update folder_members set role = 'owner' where folder_id = fid and user_id = new_owner;
   update folders set owner_id = new_owner where id = fid;
 end $$;
+
+-- ── 2026-11 추가: 닉네임·아바타·폴더 톡 ──
+alter table profiles add column if not exists nickname text not null default '';
+alter table profiles add column if not exists avatar_path text;
+
+create table if not exists messages (
+  id uuid primary key default gen_random_uuid(),
+  folder_id uuid not null references folders(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  body text not null check (char_length(body) between 1 and 2000),
+  created_at timestamptz not null default now()
+);
+create index if not exists messages_folder_idx on messages (folder_id, created_at desc);
+alter table messages enable row level security;
+drop policy if exists "messages: 멤버 읽기" on messages;
+drop policy if exists "messages: 멤버 쓰기" on messages;
+drop policy if exists "messages: 삭제" on messages;
+create policy "messages: 멤버 읽기" on messages for select using (my_role(folder_id) is not null);
+create policy "messages: 멤버 쓰기" on messages for insert with check (my_role(folder_id) is not null and user_id = auth.uid());
+create policy "messages: 삭제" on messages for delete using (user_id = auth.uid() or my_role(folder_id) = 'owner');
+do $$ begin
+  alter publication supabase_realtime add table messages;
+exception when duplicate_object then null; end $$;
+
+-- 아바타: 누구나 볼 수 있는 공개 버킷, 올리기는 본인 폴더({uid}/...)만
+insert into storage.buckets (id, name, public) values ('avatars', 'avatars', true) on conflict do nothing;
+drop policy if exists "avatars: 모두 읽기" on storage.objects;
+drop policy if exists "avatars: 본인 올리기" on storage.objects;
+drop policy if exists "avatars: 본인 수정" on storage.objects;
+drop policy if exists "avatars: 본인 삭제" on storage.objects;
+create policy "avatars: 모두 읽기" on storage.objects for select using (bucket_id = 'avatars');
+create policy "avatars: 본인 올리기" on storage.objects for insert with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "avatars: 본인 수정" on storage.objects for update using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "avatars: 본인 삭제" on storage.objects for delete using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
