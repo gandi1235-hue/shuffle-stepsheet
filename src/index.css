@@ -724,3 +724,5 @@ a.msg-who { display: block; }
 .card .pick { width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-weight: 900; font-size: 15px; color: #fff; flex: none; }
 .card .pick.on { background: var(--accent); border-color: var(--accent); }
 .card.picked { border-color: var(--accent); background: var(--accent-soft); }
+
+.field .btn.tiny { flex: none; padding: 5px 10px; font-size: 13px; min-height: 0; }

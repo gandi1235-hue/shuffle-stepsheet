@@ -106,6 +106,8 @@ export interface SaveInput extends Recognized {
   audioUrl?: string
   photoFiles?: File[]
   overwriteId?: string
+  /** 고칠 때: 붙어 있던 음원·영상 파일을 떼어 냄 */
+  dropAudio?: boolean
 }
 
 export async function saveSheet(input: SaveInput): Promise<Stepsheet> {
@@ -146,8 +148,16 @@ export async function saveSheet(input: SaveInput): Promise<Stepsheet> {
 
   if (input.overwriteId) {
     // 내용을 고치면 "수정 완료" 표시는 풀림 (다시 검토하고 눌러야 함)
-    const upd = await supabase.from('stepsheets').update({ ...row, finalized: false }).eq('id', input.overwriteId).select('*').single()
+    // 유튜브 링크를 지우면 비워지고(전엔 빈 칸을 무시해서 안 지워졌음), 파일을 떼면 audio_path도 비움
+    const patch = { ...row, finalized: false, audio_url: input.audioUrl?.trim() ? input.audioUrl.trim() : null, ...(input.dropAudio && !audio_path ? { audio_path: null } : {}) }
+    let oldPath: string | null = null
+    if (input.dropAudio || audio_path) {
+      const { data: prev } = await supabase.from('stepsheets').select('audio_path').eq('id', input.overwriteId).maybeSingle()
+      oldPath = (prev as { audio_path?: string | null } | null)?.audio_path ?? null
+    }
+    const upd = await supabase.from('stepsheets').update(patch).eq('id', input.overwriteId).select('*').single()
     if (upd.error) throw upd.error
+    if (oldPath && oldPath !== audio_path) await supabase.storage.from('audio').remove([oldPath]).catch(() => undefined)
     return upd.data as Stepsheet
   }
   const ins = await supabase.from('stepsheets').insert(row).select('*').single()

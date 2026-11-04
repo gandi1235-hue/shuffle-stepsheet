@@ -27,6 +27,7 @@ export default function AddPage() {
   const [audioFile, setAudioFile] = useState<File | null>(null)
   const [audioUrl, setAudioUrl] = useState('')
   const [hasAudioPath, setHasAudioPath] = useState(false)
+  const [dropAudio, setDropAudio] = useState(false) // 고칠 때 붙어 있던 파일 떼기
   const [hasSync, setHasSync] = useState(false)
   const [err, setErr] = useState('')
   const camRef = useRef<HTMLInputElement>(null)
@@ -122,7 +123,7 @@ export default function AddPage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const toast = useToast()
   const speech = useSpeech((t) => setAskText((q) => `${q}${q && !q.endsWith(' ') ? ' ' : ''}${t}`), toast, '셔플댄스 스텝지를 고치는 요청. 스텝 이름(런닝맨, 티스텝, 찰스턴, 크리스크로스, 글라이드, 킥볼체인지), 박수(4박, 8박), 줄 번호가 자주 나옴.')
-  const hasAudio = hasAudioPath || Boolean(audioFile) || Boolean(audioUrl.trim())
+  const hasAudio = (hasAudioPath && !dropAudio) || Boolean(audioFile) || Boolean(audioUrl.trim())
 
   useEffect(() => {
     listFolders().then((fs) => {
@@ -228,7 +229,7 @@ export default function AddPage() {
           })
           .filter((l) => l.steps.length || (l.label ?? '').trim() || l.notes?.length),
       }
-      const saved = await saveSheet({ ...cleaned, folderId, audioFile, audioUrl: audioUrl.trim(), photoFiles: files, overwriteId })
+      const saved = await saveSheet({ ...cleaned, folderId, audioFile, audioUrl: audioUrl.trim(), photoFiles: files, overwriteId, dropAudio })
       haptic(20)
       toast(editId ? '수정했어요' : '스텝지를 저장했어요')
       nav(`/sheet/${saved.id}`, { replace: true })
@@ -600,7 +601,15 @@ export default function AddPage() {
 
         <div className="field">
           <label htmlFor="au">음원·영상 파일 (MP3, M4A, MP4, MOV 등 내가 가진 파일)</label>
-          <input id="au" type="file" accept="audio/*,video/*" onChange={(e) => setAudioFile(e.target.files?.[0] ?? null)} />
+          <input id="au" type="file" accept="audio/*,video/*" onChange={(e) => { setAudioFile(e.target.files?.[0] ?? null); if (e.target.files?.[0]) setDropAudio(false) }} />
+          {hasAudioPath && !audioFile && (
+            <div className="row-btns" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+              <span className="edittip" style={{ flex: 1, margin: 0 }}>{dropAudio ? '저장하면 붙어 있던 파일이 떼어져요' : '지금 붙어 있는 파일이 있어요 (새 파일을 고르면 바뀌어요)'}</span>
+              <button type="button" className="btn tiny" onClick={() => setDropAudio((v) => !v)}>
+                {dropAudio ? '되살리기' : '파일 떼기'}
+              </button>
+            </div>
+          )}
           <div className="edittip">영상을 올리면 앱 안에서 스텝지와 같이 보고, AI가 영상을 보고 줄을 맞춰요. 인스타 릴스는 폰에 저장한 뒤 올리세요 (파일은 50MB까지).</div>
           {audioFile && audioFile.size > 50 * 1024 * 1024 && <div className="notice warn">파일이 50MB를 넘어요. 화면 녹화 앱이나 갤러리의 "동영상 자르기·압축"으로 줄여서 올려 주세요.</div>}
         </div>
