@@ -68,26 +68,47 @@ Deno.serve(async (req) => {
     const geminiKey = findKey(/gemini|google/i);
     const claudeKey = findKey(/ant.?h?rop|claude/i);
 
-    // 아바타 모드: { avatar: {media_type, data} } — 사진 속 사람을 귀여운 캐릭터 아바타로 (Gemini 이미지 모델)
+    // 아바타 모드: { avatar: {media_type, data} } — 사진 속 사람을 귀여운 전신 캐릭터로 (Gemini 이미지 모델)
+    // 모델 이름이 바뀌어도 되게: 키로 쓸 수 있는 모델 목록에서 이미지 생성 모델을 찾아 차례로 시도
     if (body.avatar?.data) {
       if (!geminiKey) throw new Error("AI 아바타는 Gemini 키가 있어야 만들 수 있어요");
-      const model = Deno.env.get("GEMINI_IMAGE_MODEL") ?? "gemini-2.5-flash-image";
       const prompt = "Turn the person in this photo into a cute chibi-style full-body 3D-cartoon dance character (soft Pixar-like sticker look). Big head and small body (about 2.5 heads tall), head near the top of the frame, whole body visible down to the shoes, standing in a playful shuffle-dance pose on a simple floor, facing the camera, smiling. Keep their recognizable features: hair style and color, glasses, face shape, skin tone, age, and the outfit colors from the photo. Plain soft pastel background, portrait 3:4, no text, no watermark.";
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ inline_data: { mime_type: body.avatar.media_type, data: body.avatar.data } }, { text: prompt }] }],
-          generationConfig: { responseModalities: ["IMAGE", "TEXT"], imageConfig: { aspectRatio: "3:4" } },
-        }),
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j?.error?.message ?? `Gemini 오류 ${res.status}`);
-      type Part = { inlineData?: { mimeType?: string; data: string }; inline_data?: { mime_type?: string; data: string } };
-      const parts: Part[] = j.candidates?.[0]?.content?.parts ?? [];
-      const img = parts.map((p) => p.inlineData ?? p.inline_data).find((x) => x?.data);
-      if (!img) throw new Error("아바타를 만들지 못했어요. 얼굴이 잘 보이는 사진으로 다시 해 보세요");
-      return new Response(JSON.stringify({ image: img.data, media_type: (img as { mimeType?: string }).mimeType ?? (img as { mime_type?: string }).mime_type ?? "image/png" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const candidates = await imageModels(geminiKey);
+      if (!candidates.length) throw new Error("이 Gemini 키로 쓸 수 있는 이미지 생성 모델이 없어요 (AI Studio에서 결제/한도를 확인해 주세요)");
+      const errors: string[] = [];
+      for (const model of candidates) {
+        for (const withCfg of [true, false]) {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
+            body: JSON.stringify({
+              contents: [{ role: "user", parts: [{ inline_data: { mime_type: body.avatar.media_type, data: body.avatar.data } }, { text: prompt }] }],
+              generationConfig: withCfg ? { responseModalities: ["IMAGE", "TEXT"], imageConfig: { aspectRatio: "3:4" } } : { responseModalities: ["IMAGE", "TEXT"] },
+            }),
+          });
+          const j = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            const msg = j?.error?.message ?? `HTTP ${res.status}`;
+            console.error(`[avatar] ${model}${withCfg ? "" : " (no imageConfig)"}: ${res.status} ${msg}`);
+            errors.push(`${model}: ${msg}`);
+            // 설정 필드를 모르는 모델이면 설정 없이 한 번 더, 그 밖의 오류(모델 없음·한도·결제)는 다음 모델로
+            if (withCfg && res.status === 400 && /imageConfig|aspect/i.test(msg)) continue;
+            break;
+          }
+          type Part = { inlineData?: { mimeType?: string; data: string }; inline_data?: { mime_type?: string; data: string }; text?: string };
+          const parts: Part[] = j.candidates?.[0]?.content?.parts ?? [];
+          const img = parts.map((p) => p.inlineData ?? p.inline_data).find((x) => x?.data);
+          if (img) {
+            console.log(`[avatar] ok via ${model}`);
+            return new Response(JSON.stringify({ image: img.data, media_type: (img as { mimeType?: string }).mimeType ?? (img as { mime_type?: string }).mime_type ?? "image/png", model }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }
+          const why = j.candidates?.[0]?.finishReason ?? j.promptFeedback?.blockReason ?? parts.map((p) => p.text).filter(Boolean).join(" ").slice(0, 120);
+          console.error(`[avatar] ${model}: no image (${why})`);
+          errors.push(`${model}: 그림 없음 (${why})`);
+          break;
+        }
+      }
+      throw new Error(`아바타를 만들지 못했어요. ${errors[0] ?? ""}`.trim());
     }
 
     // 직접 요청 모드: { order_request, lines } — 비정형 요청을 춤추는 계획(줄 순서·쉼·길이·시작 시각·박자)으로
@@ -152,6 +173,27 @@ plan 항목 종류:
 });
 
 type Img = { media_type: string; data: string };
+
+/** 이 키로 쓸 수 있는 이미지 생성 모델(이름에 image, generateContent 지원)을 선호 순서로. 환경변수 GEMINI_IMAGE_MODEL이 있으면 맨 앞 */
+async function imageModels(key: string): Promise<string[]> {
+  const prefer = ["gemini-3.1-flash-lite-image", "gemini-3.1-flash-image", "gemini-3-pro-image-preview", "gemini-2.5-flash-image", "gemini-2.5-flash-image-preview"];
+  const forced = Deno.env.get("GEMINI_IMAGE_MODEL")?.trim();
+  let avail: string[] = [];
+  try {
+    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": key } });
+    const j = await res.json();
+    avail = ((j.models ?? []) as { name: string; supportedGenerationMethods?: string[] }[])
+      .filter((m) => /image/i.test(m.name) && (m.supportedGenerationMethods ?? []).includes("generateContent"))
+      .map((m) => m.name.replace(/^models\//, ""));
+    console.log(`[avatar] image models: ${avail.join(", ") || "(none)"}`);
+  } catch (e) {
+    console.error(`[avatar] models list failed: ${(e as Error).message}`);
+  }
+  const ordered = [...prefer.filter((p) => avail.includes(p)), ...avail.filter((a) => !prefer.includes(a) && !/veo|embedding|tts|live|audio/i.test(a))];
+  if (!ordered.length) ordered.push(...prefer); // 목록을 못 받았으면 알려진 이름으로 그냥 시도
+  return forced ? [forced, ...ordered.filter((m) => m !== forced)] : ordered;
+}
+
 
 // 비밀키 이름을 조금 다르게 적어도(예: "antrophic key") 찾도록 이름에 관계없이 패턴으로 검색
 function findKey(pattern: RegExp): string | undefined {

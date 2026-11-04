@@ -4,7 +4,7 @@ import { Character } from '../components/Avatar'
 import { LevelUpOverlay } from '../components/LevelUp'
 import TopBar from '../components/TopBar'
 import { useToast } from '../components/ui'
-import { getProfile, mySheetCount, shrinkImage, updateProfile, uploadAvatar, type Profile } from '../lib/api'
+import { getProfile, makeAvatar, mySheetCount, shrinkImage, updateProfile, uploadAvatar, type Profile } from '../lib/api'
 import { levelLabel, needFor, nextTitle, progressOf, titleOf } from '../lib/level'
 
 /** 내 프로필: 캐릭터 그림 · 닉네임 · 레벨/칭호. 설정과 멤버 목록, 톡에서 내 이름을 눌러 들어온다 */
@@ -15,7 +15,12 @@ export default function ProfilePage() {
   const [demo, setDemo] = useState(false)
   const [nick, setNick] = useState('')
   const [saving, setSaving] = useState(false)
-  const [making, setMaking] = useState(false)
+  const [making, setMaking] = useState<'' | 'ai' | 'photo'>('')
+  const modeRef = useRef<'ai' | 'photo'>('photo')
+  const pick = (mode: 'ai' | 'photo') => {
+    modeRef.current = mode
+    fileRef.current?.click()
+  }
   const [preview, setPreview] = useState<{ blob: Blob; url: string } | null>(null)
   const [err, setErr] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
@@ -53,14 +58,14 @@ export default function ProfilePage() {
     e.target.value = ''
     if (!f) return
     setErr('')
-    setMaking(true)
+    setMaking(modeRef.current)
     try {
-      const blob = await shrinkImage(f)
+      const blob = modeRef.current === 'ai' ? await makeAvatar(f) : await shrinkImage(f)
       setPreview({ blob, url: URL.createObjectURL(blob) })
     } catch (er) {
       setErr((er as Error).message)
     } finally {
-      setMaking(false)
+      setMaking('')
     }
   }
   const useAvatar = async () => {
@@ -121,18 +126,21 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="row-btns" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button type="button" className="btn primary" style={{ flex: 2, minWidth: 160 }} onClick={() => fileRef.current?.click()} disabled={making}>
-                {making ? '…' : '캐릭터 사진 올리기'}
+              <button type="button" className="btn primary" style={{ flex: 2, minWidth: 170 }} onClick={() => pick('ai')} disabled={!!making}>
+                {making === 'ai' ? '만드는 중… (20초쯤)' : '✨ 사진으로 AI 캐릭터 만들기'}
+              </button>
+              <button type="button" className="btn" style={{ flex: 1 }} onClick={() => pick('photo')} disabled={!!making}>
+                {making === 'photo' ? '…' : '그림 그대로 올리기'}
               </button>
               {profile?.avatar_path && (
-                <button type="button" className="btn" style={{ flex: 1 }} onClick={clearAvatar} disabled={making}>
+                <button type="button" className="btn" style={{ flex: 1 }} onClick={clearAvatar} disabled={!!making}>
                   지우기
                 </button>
               )}
             </div>
           )}
           <input ref={fileRef} type="file" accept="image/*" className="sr-only" onChange={onFile} />
-          <div className="panel-desc">캐릭터 그림이나 사진을 올리면 멤버들에게 그걸로 보여요. 세로 전신 그림이 잘 어울려요.</div>
+          <div className="panel-desc">AI 캐릭터는 얼굴이 잘 보이는 사진 한 장이면 돼요(전신 사진이면 옷까지 닮아요). 이미 만든 그림이 있으면 그대로 올려도 돼요. 세로 전신 그림이 잘 어울려요.</div>
         </section>
 
         <section className="panel">

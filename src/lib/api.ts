@@ -319,6 +319,27 @@ export async function uploadAvatar(blob: Blob): Promise<string> {
 }
 
 /** 사진을 정사각형 작은 그림으로 (그대로 아바타로 쓸 때) */
+/** 사진 → AI 전신 캐릭터 (엣지 함수가 Gemini 이미지 모델 호출). 결과는 그림 Blob */
+export async function makeAvatar(file: File): Promise<Blob> {
+  const small = await shrinkImage(file, 768)
+  const b64 = await new Promise<string>((res, rej) => {
+    const r = new FileReader()
+    r.onload = () => res(String(r.result).split(',')[1] ?? '')
+    r.onerror = () => rej(new Error('사진을 읽지 못했어요'))
+    r.readAsDataURL(small)
+  })
+  const { data, error } = await supabase.functions.invoke('recognize', { body: { avatar: { media_type: small.type || 'image/jpeg', data: b64 } } })
+  if (error) {
+    const msg = await (error as { context?: Response }).context?.json?.().then((j: { error?: string }) => j?.error).catch(() => undefined)
+    throw new Error(msg || '아바타를 만들지 못했어요. 잠시 뒤 다시 해 보세요')
+  }
+  if (data?.error) throw new Error(data.error)
+  if (!data?.image) throw new Error('아바타를 만들지 못했어요')
+  const bin = atob(data.image)
+  const arr = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i)
+  return new Blob([arr], { type: data.media_type || 'image/png' })
+}
 /** 그림 파일을 긴 변 max 픽셀로 줄여(비율 유지) JPEG/PNG로. 투명 PNG는 PNG 유지 */
 export async function shrinkImage(file: File, max = 1024): Promise<Blob> {
   const img = await createImageBitmap(file)
