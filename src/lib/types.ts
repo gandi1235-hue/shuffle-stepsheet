@@ -17,15 +17,15 @@ export interface Song {
   artist: string
 }
 
+/** 스텝 하나: 이름 + 박수 (예: "T스텝 오 왼", "4박") */
 export interface Step {
   name: string
-  count: string
-  direction: string
+  beats: string
   uncertain?: boolean
 }
 
-export interface Section {
-  name: string
+/** 스텝지 한 줄: 스텝 1~2개 */
+export interface Line {
   steps: Step[]
 }
 
@@ -34,8 +34,8 @@ export interface Stepsheet {
   song_id: string
   folder_id: string
   creator_name: string
-  difficulty: string
-  sections: Section[]
+  creator_info: string
+  lines: Line[]
   memo: string
   audio_path: string | null
   audio_url: string | null
@@ -50,16 +50,33 @@ export interface Recognized {
   title: string
   artist: string
   creator_name: string
-  difficulty: string
+  creator_info: string
   memo: string
-  sections: Section[]
+  lines: Line[]
 }
+
+export const emptyStep = (): Step => ({ name: '', beats: '4박' })
+export const emptyLine = (): Line => ({ steps: [emptyStep(), emptyStep()] })
 
 export const emptyRecognized = (): Recognized => ({
   title: '',
   artist: '',
   creator_name: '',
-  difficulty: '',
+  creator_info: '',
   memo: '',
-  sections: [{ name: '본문', steps: [{ name: '', count: '', direction: '' }] }],
+  lines: [emptyLine(), emptyLine(), emptyLine()],
 })
+
+export function beatsOf(s: string): number {
+  const m = s.match(/\d+/)
+  return m ? Number(m[0]) : 0
+}
+
+export function sheetStats(lines: Line[]) {
+  const steps = lines.flatMap((l) => l.steps.filter((s) => s.name.trim()))
+  return { lines: lines.length, steps: steps.length, beats: steps.reduce((n, s) => n + beatsOf(s.beats), 0) }
+}
+
+export function stepNames(lines: Line[]): string[] {
+  return lines.flatMap((l) => l.steps.map((s) => s.name))
+}

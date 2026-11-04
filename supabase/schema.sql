@@ -44,8 +44,8 @@ create table if not exists stepsheets (
   song_id uuid not null references songs(id) on delete cascade,
   folder_id uuid not null references folders(id) on delete cascade,
   creator_name text not null,
-  difficulty text not null default '',
-  sections jsonb not null default '[]'::jsonb,
+  creator_info text not null default '',
+  lines jsonb not null default '[]'::jsonb,
   memo text not null default '',
   audio_path text,
   audio_url text,
@@ -57,7 +57,7 @@ create table if not exists stepsheets (
 );
 
 create index if not exists stepsheets_search_idx
-  on stepsheets using gin (to_tsvector('simple', coalesce(creator_name,'') || ' ' || coalesce(memo,'') || ' ' || coalesce(sections::text,'')));
+  on stepsheets using gin (to_tsvector('simple', coalesce(creator_name,'') || ' ' || coalesce(memo,'') || ' ' || coalesce(lines::text,'')));
 create index if not exists songs_title_idx on songs (lower(title));
 
 -- 가입하면 프로필과 개인 폴더 자동 생성

@@ -42,8 +42,7 @@ export default function SheetPage() {
   if (!sheet) return <div className="spinner">불러오는 중…</div>
 
   const canEdit = folder?.role === 'owner' || folder?.role === 'editor'
-  const total = sheet.sections.reduce((n, s) => n + s.steps.length, 0)
-  const isExternal = !sheet.audio_path && Boolean(sheet.audio_url)
+    const isExternal = !sheet.audio_path && Boolean(sheet.audio_url)
 
   const share = async () => {
     const url = window.location.href
@@ -71,8 +70,7 @@ export default function SheetPage() {
           </button>
         </div>
         <div className="content">
-          <SheetTable sections={sheet.sections} big />
-          {sheet.memo && <div className="memo" style={{ fontSize: 19 }}>{sheet.memo}</div>}
+          <SheetTable title={sheet.song?.title ?? ''} artist={sheet.song?.artist ?? ''} creator={sheet.creator_name} creatorInfo={sheet.creator_info} lines={sheet.lines} memo={sheet.memo} big />
         </div>
         {audio && <Player src={audio} name={sheet.song?.title ?? ''} />}
       </div>
@@ -102,19 +100,6 @@ export default function SheetPage() {
         }
       />
       <div className="content">
-        <div>
-          <h2 style={{ margin: 0, fontSize: 26, lineHeight: 1.25 }}>{sheet.song?.title}</h2>
-          <div style={{ color: 'var(--muted)', marginTop: 4 }}>
-            {sheet.song?.artist ? `${sheet.song.artist} · ` : ''}창작 <b style={{ color: 'var(--fg)', fontWeight: 500 }}>{sheet.creator_name}</b>
-          </div>
-          <div className="chips" style={{ marginTop: 8 }}>
-            {sheet.difficulty && <span className="chip accent">{sheet.difficulty}</span>}
-            <span className="chip">
-              {sheet.sections.length}구간 · {total}스텝
-            </span>
-          </div>
-        </div>
-
         {showPhotos && (
           <div className="list">
             {photos.map((p, i) => (
@@ -123,8 +108,7 @@ export default function SheetPage() {
           </div>
         )}
 
-        <SheetTable sections={sheet.sections} />
-        {sheet.memo && <div className="memo">메모: {sheet.memo}</div>}
+        <SheetTable title={sheet.song?.title ?? ''} artist={sheet.song?.artist ?? ''} creator={sheet.creator_name} creatorInfo={sheet.creator_info} lines={sheet.lines} memo={sheet.memo} />
 
         {isExternal && (
           <a className="btn block" href={sheet.audio_url!} target="_blank" rel="noreferrer">

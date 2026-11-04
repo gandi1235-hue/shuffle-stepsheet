@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import TopBar from '../components/TopBar'
 import { Chevron, Music, People, Plus, Search } from '../components/Icons'
 import { getFolder, listSongs, type SongWithSheets } from '../lib/api'
-import type { Folder } from '../lib/types'
+import { sheetStats, stepNames, type Folder } from '../lib/types'
 
 type Sort = 'name' | 'recent' | 'audio'
 
@@ -29,7 +29,7 @@ export default function FolderPage() {
         !term ||
         s.title.includes(term) ||
         s.artist.includes(term) ||
-        s.sheets.some((sh) => sh.creator_name.includes(term) || sh.sections.some((sec) => sec.steps.some((st) => st.name.includes(term)))),
+        s.sheets.some((sh) => sh.creator_name.includes(term) || stepNames(sh.lines).some((n) => n.includes(term))),
     )
     if (sort === 'audio') list = list.filter((s) => s.sheets.some((sh) => sh.audio_path || sh.audio_url))
     if (sort === 'recent') list = [...list].sort((a, b) => latest(b).localeCompare(latest(a)))
@@ -96,14 +96,14 @@ export default function FolderPage() {
                     .sort((a, b) => a.creator_name.localeCompare(b.creator_name, 'ko'))
                     .map((sh) => {
                       const hasAudio = Boolean(sh.audio_path || sh.audio_url)
-                      const steps = sh.sections.reduce((n, sec) => n + sec.steps.length, 0)
+                      const st = sheetStats(sh.lines)
                       return (
                         <Link key={sh.id} to={`/sheet/${sh.id}`} className="ver">
                           <span className={hasAudio ? 'dot' : 'dot off'} />
                           <span style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                             <span style={{ fontSize: 17, fontWeight: 500 }}>창작 {sh.creator_name}</span>
                             <span style={{ fontSize: 14, color: 'var(--faint)' }}>
-                              {[sh.difficulty, `${steps}스텝`, hasAudio ? '음원 있음' : '음원 없음'].filter(Boolean).join(' · ')}
+                              {[sh.creator_info, `${st.lines}줄 · ${st.steps}스텝`, hasAudio ? '음원 있음' : '음원 없음'].filter(Boolean).join(' · ')}
                             </span>
                           </span>
                           <span style={{ color: hasAudio ? 'var(--accent)' : '#d1d5db' }}>

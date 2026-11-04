@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import TopBar from '../components/TopBar'
 import { Camera, Photo } from '../components/Icons'
 import { findDuplicate, getSheet, listFolders, recognize, saveSheet } from '../lib/api'
-import { emptyRecognized, type Folder, type Recognized, type Section } from '../lib/types'
+import { emptyLine, emptyRecognized, emptyStep, type Folder, type Line, type Recognized } from '../lib/types'
 
 type Stage = 'photo' | 'recognizing' | 'edit' | 'saving'
 
@@ -38,9 +38,9 @@ export default function AddPage() {
           title: s.song?.title ?? '',
           artist: s.song?.artist ?? '',
           creator_name: s.creator_name,
-          difficulty: s.difficulty,
+          creator_info: s.creator_info ?? '',
           memo: s.memo,
-          sections: s.sections,
+          lines: s.lines.map((l) => ({ steps: [l.steps[0] ?? emptyStep(), l.steps[1] ?? emptyStep()] })),
         })
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -58,7 +58,8 @@ export default function AddPage() {
     setStage('recognizing')
     try {
       const r = await recognize(files)
-      setData({ ...emptyRecognized(), ...r })
+      const lines = (r.lines ?? []).map((l) => ({ steps: [l.steps[0] ?? emptyStep(), l.steps[1] ?? emptyStep()] }))
+      setData({ ...emptyRecognized(), ...r, lines: lines.length ? lines : emptyRecognized().lines })
       setStage('edit')
     } catch (e) {
       setErr(`사진을 읽지 못했어요: ${(e as Error).message}`)
@@ -73,7 +74,8 @@ export default function AddPage() {
 
   const save = async () => {
     setErr('')
-    if (!data.title.trim()) return setErr('노래 제목은 꼭 적어 주세요.')
+    if (!data.title.trim()) return setErr('안무곡(노래 제목)은 꼭 적어 주세요.')
+    if (!data.creator_name.trim()) return setErr('응시자(창작자 이름)는 꼭 적어 주세요.')
     if (!folderId) return setErr('저장할 폴더를 골라 주세요.')
     setStage('saving')
     try {
@@ -91,9 +93,9 @@ export default function AddPage() {
       }
       const cleaned: Recognized = {
         ...data,
-        sections: data.sections
-          .map((s) => ({ ...s, steps: s.steps.filter((st) => st.name.trim()).map((st) => ({ ...st, uncertain: false })) }))
-          .filter((s) => s.steps.length),
+        lines: data.lines
+          .map((l) => ({ steps: l.steps.filter((s) => s.name.trim()).map((s) => ({ name: s.name.trim(), beats: s.beats.trim() })) }))
+          .filter((l) => l.steps.length),
       }
       const saved = await saveSheet({ ...cleaned, folderId, audioFile, audioUrl: audioUrl.trim(), photoFiles: files, overwriteId })
       nav(`/sheet/${saved.id}`, { replace: true })
@@ -103,7 +105,9 @@ export default function AddPage() {
     }
   }
 
-  const setSec = (i: number, sec: Section) => setData({ ...data, sections: data.sections.map((s, k) => (k === i ? sec : s)) })
+  const setLine = (i: number, line: Line) => setData({ ...data, lines: data.lines.map((l, k) => (k === i ? line : l)) })
+  const setStep = (i: number, j: number, patch: { name?: string; beats?: string }) =>
+    setLine(i, { steps: data.lines[i].steps.map((s, k) => (k === j ? { ...s, ...patch, uncertain: false } : s)) })
 
   if (stage === 'photo' || stage === 'recognizing')
     return (
@@ -127,7 +131,7 @@ export default function AddPage() {
               </button>
             </div>
             <input ref={camRef} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => pick(e.target.files)} />
-            <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple className="sr-only" onChange={(e) => pick(e.target.files)} />
+            <input ref={fileRef} type="file" accept="image/*" multiple className="sr-only" onChange={(e) => pick(e.target.files)} />
           </div>
           {previews.length > 0 && (
             <div className="thumbs">
@@ -149,7 +153,8 @@ export default function AddPage() {
       </div>
     )
 
-  let n = 0
+  const unc = (b?: boolean) => (b ? 'uncertain-input' : '')
+
   return (
     <div className="screen">
       <TopBar title={editId ? '스텝지 수정' : '인식 결과 확인'} sub={editId ? undefined : '2 / 3 · 틀린 칸 고치기'} back />
@@ -165,7 +170,7 @@ export default function AddPage() {
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
             <div className="thumbs">
               {previews.map((p, i) => (
-                <img key={i} src={p} alt={`원본 ${i + 1}`} />
+                <img key={i} src={p} alt={`원본 ${i + 1}`} style={{ width: 84, height: 108 }} />
               ))}
             </div>
             <div style={{ fontSize: 15, color: 'var(--muted)' }}>
@@ -175,72 +180,51 @@ export default function AddPage() {
           </div>
         )}
 
-        <div className="grid2">
-          <F label="노래 제목 *" id="t" v={data.title} set={(v) => setData({ ...data, title: v })} />
-          <F label="가수" id="a" v={data.artist} set={(v) => setData({ ...data, artist: v })} />
-          <F label="창작자 *" id="c" v={data.creator_name} set={(v) => setData({ ...data, creator_name: v })} />
-          <div className="field">
-            <label htmlFor="d">난이도</label>
-            <select id="d" value={data.difficulty} onChange={(e) => setData({ ...data, difficulty: e.target.value })}>
-              <option value="">선택 안 함</option>
-              <option>초급</option>
-              <option>중급</option>
-              <option>고급</option>
-            </select>
+        <div className="form-head">
+          <div className="k">응시자 *</div>
+          <div className="v pad v2">
+            <input aria-label="응시자 이름" placeholder="이름" value={data.creator_name} onChange={(e) => setData({ ...data, creator_name: e.target.value })} />
+            <input aria-label="기수/지부" placeholder="기수/지부 (선택)" value={data.creator_info} onChange={(e) => setData({ ...data, creator_info: e.target.value })} />
+          </div>
+          <div className="k">안무곡 *</div>
+          <div className="v pad v2">
+            <input aria-label="노래 제목" placeholder="노래 제목" value={data.title} onChange={(e) => setData({ ...data, title: e.target.value })} />
+            <input aria-label="가수" placeholder="가수 (선택)" value={data.artist} onChange={(e) => setData({ ...data, artist: e.target.value })} />
           </div>
         </div>
 
-        <div className="sheet">
-          <div className="hrow" style={{ gridTemplateColumns: '28px minmax(0,1.4fr) 80px minmax(0,1fr) 36px', gap: 6, padding: '8px' }}>
-            <div></div>
-            <div>스텝 *</div>
-            <div>카운트</div>
-            <div>방향·비고</div>
+        <div style={{ border: '2px solid var(--fg)' }}>
+          <div className="edithead">
+            <div>줄</div>
+            <div>스텝 1</div>
+            <div>박</div>
+            <div>스텝 2</div>
+            <div>박</div>
             <div></div>
           </div>
-          {data.sections.map((sec, i) => (
-            <div key={i}>
-              <div className="secrow">
-                <input aria-label="구간 이름" value={sec.name} placeholder="구간 (인트로, A, 후렴…)" onChange={(e) => setSec(i, { ...sec, name: e.target.value })} />
-                {data.sections.length > 1 && (
-                  <button type="button" className="x" aria-label="구간 삭제" onClick={() => setData({ ...data, sections: data.sections.filter((_, k) => k !== i) })}>
-                    ×
-                  </button>
-                )}
-              </div>
-              {sec.steps.map((st, j) => {
-                n += 1
-                const upd = (patch: Partial<typeof st>) => setSec(i, { ...sec, steps: sec.steps.map((s, k) => (k === j ? { ...s, ...patch, uncertain: false } : s)) })
-                const cls = st.uncertain ? 'uncertain-input' : ''
-                return (
-                  <div className="editrow" key={j}>
-                    <div className="no">{n}</div>
-                    <input aria-label="스텝 이름" className={cls} value={st.name} placeholder="스텝" onChange={(e) => upd({ name: e.target.value })} />
-                    <input aria-label="카운트" className={cls} value={st.count} placeholder="8×2" onChange={(e) => upd({ count: e.target.value })} />
-                    <input aria-label="방향 또는 비고" value={st.direction} placeholder="방향" onChange={(e) => upd({ direction: e.target.value })} />
-                    <button type="button" className="x" aria-label="줄 삭제" onClick={() => setSec(i, { ...sec, steps: sec.steps.filter((_, k) => k !== j) })}>
-                      ×
-                    </button>
-                  </div>
-                )
-              })}
-              <div style={{ padding: 8, borderTop: '1px solid var(--soft)' }}>
-                <button type="button" className="btn pill" onClick={() => setSec(i, { ...sec, steps: [...sec.steps, { name: '', count: '', direction: '' }] })}>
-                  + 스텝 줄 추가
-                </button>
-              </div>
+          {data.lines.map((l, i) => (
+            <div className="editline" key={i}>
+              <div className="no">{i + 1}</div>
+              <input aria-label={`${i + 1}줄 스텝 1`} className={unc(l.steps[0]?.uncertain)} value={l.steps[0]?.name ?? ''} placeholder={i === 0 ? '전주 - …' : '스텝'} onChange={(e) => setStep(i, 0, { name: e.target.value })} />
+              <input aria-label={`${i + 1}줄 스텝 1 박수`} className={unc(l.steps[0]?.uncertain)} value={l.steps[0]?.beats ?? ''} placeholder="4박" onChange={(e) => setStep(i, 0, { beats: e.target.value })} />
+              <input aria-label={`${i + 1}줄 스텝 2`} className={unc(l.steps[1]?.uncertain)} value={l.steps[1]?.name ?? ''} placeholder="스텝 (선택)" onChange={(e) => setStep(i, 1, { name: e.target.value })} />
+              <input aria-label={`${i + 1}줄 스텝 2 박수`} className={unc(l.steps[1]?.uncertain)} value={l.steps[1]?.beats ?? ''} placeholder="4박" onChange={(e) => setStep(i, 1, { beats: e.target.value })} />
+              <button type="button" className="x" aria-label="줄 삭제" onClick={() => setData({ ...data, lines: data.lines.filter((_, k) => k !== i) })}>
+                ×
+              </button>
             </div>
           ))}
-          <div style={{ padding: 8, borderTop: '1px solid var(--line)' }}>
-            <button type="button" className="btn pill" onClick={() => setData({ ...data, sections: [...data.sections, { name: '', steps: [{ name: '', count: '', direction: '' }] }] })}>
-              + 구간 추가
+          <div style={{ padding: 8, borderTop: '1px solid var(--soft)', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button type="button" className="btn pill" onClick={() => setData({ ...data, lines: [...data.lines, emptyLine()] })}>
+              + 줄 추가
             </button>
+            <span style={{ fontSize: 13, color: 'var(--faint)' }}>마지막 "마무리"는 자동으로 붙어요</span>
           </div>
         </div>
 
         <div className="field">
-          <label htmlFor="m">메모</label>
-          <textarea id="m" value={data.memo} onChange={(e) => setData({ ...data, memo: e.target.value })} placeholder="주의할 점, 박자 등" />
+          <label htmlFor="m">참고</label>
+          <input id="m" value={data.memo} onChange={(e) => setData({ ...data, memo: e.target.value })} placeholder="예: Y스텝시 손동작 있음" />
         </div>
 
         <div className="field">
@@ -270,15 +254,6 @@ export default function AddPage() {
           {stage === 'saving' ? '저장 중…' : editId ? '수정 저장' : '저장'}
         </button>
       </div>
-    </div>
-  )
-}
-
-function F({ label, id, v, set }: { label: string; id: string; v: string; set: (v: string) => void }) {
-  return (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      <input id={id} value={v} onChange={(e) => set(e.target.value)} />
     </div>
   )
 }

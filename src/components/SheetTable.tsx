@@ -1,31 +1,48 @@
-import type { Section } from '../lib/types'
+import { sheetStats, type Line } from '../lib/types'
 
-export default function SheetTable({ sections, big }: { sections: Section[]; big?: boolean }) {
-  let n = 0
+interface Props {
+  title: string
+  artist: string
+  creator: string
+  creatorInfo?: string
+  lines: Line[]
+  memo?: string
+  big?: boolean
+}
+
+/** 대한셔플댄스협회 스텝지 양식: 머리말 표 + 한 줄에 스텝 1~2개 (N박) */
+export default function SheetTable({ title, artist, creator, creatorInfo, lines, memo, big }: Props) {
+  const st = sheetStats(lines)
   return (
-    <div className={big ? 'sheet big' : 'sheet'}>
-      <div className="hrow">
-        <div>No</div>
-        <div>스텝</div>
-        <div className="r">카운트</div>
-        <div className="r">방향</div>
-      </div>
-      {sections.map((sec, i) => (
-        <div key={i}>
-          {(sections.length > 1 || sec.name) && <div className="sec">{sec.name || '본문'}</div>}
-          {sec.steps.map((st, j) => {
-            n += 1
-            return (
-              <div className="srow" key={j}>
-                <div className="no">{n}</div>
-                <div className="nm">{st.uncertain ? <span className="uncertain">{st.name}</span> : st.name}</div>
-                <div className="r">{st.count}</div>
-                <div className="r dir">{st.direction}</div>
-              </div>
-            )
-          })}
+    <div className={big ? 'form big' : 'form'}>
+      <div className="form-head">
+        <div className="k">응시자</div>
+        <div className="v">{[creator, creatorInfo].filter(Boolean).join('/')}</div>
+        <div className="k">안무곡</div>
+        <div className="v">
+          {title}
+          {artist ? ` / ${artist}` : ''}
         </div>
-      ))}
+      </div>
+      <div className="form-body">
+        {lines.map((l, i) => (
+          <div className="line" key={i}>
+            {l.steps
+              .filter((s) => s.name.trim())
+              .map((s, j) => (
+                <span className="st" key={j}>
+                  <span className={s.uncertain ? 'uncertain' : ''}>{s.name}</span>
+                  {s.beats && <span className="beats"> ({s.beats})</span>}
+                </span>
+              ))}
+          </div>
+        ))}
+        <div className="line">마무리</div>
+        {memo && <div className="line memo-line">참고: {memo}</div>}
+      </div>
+      <div className="form-stats">
+        총 {st.lines}줄 · {st.steps}스텝 · {st.beats}박
+      </div>
     </div>
   )
 }

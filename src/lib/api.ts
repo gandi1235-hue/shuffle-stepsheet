@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { Folder, Recognized, Role, Song, Stepsheet } from './types'
+import { stepNames, type Folder, type Recognized, type Role, type Song, type Stepsheet } from './types'
 
 export async function listFolders(): Promise<Folder[]> {
   const { data: members, error } = await supabase
@@ -63,15 +63,15 @@ export async function searchSheets(q: string): Promise<Stepsheet[]> {
     .or(`title.ilike.%${term}%,artist.ilike.%${term}%`)
   const songIds = (songs ?? []).map((s) => s.id)
   let query = supabase.from('stepsheets').select('*, song:songs(*)').limit(50)
-  const ors = [`creator_name.ilike.%${term}%`, `memo.ilike.%${term}%`, `sections.cs.${JSON.stringify(term)}`]
+  const ors = [`creator_name.ilike.%${term}%`, `memo.ilike.%${term}%`]
   if (songIds.length) ors.push(`song_id.in.(${songIds.join(',')})`)
-  query = query.or(ors.filter((o) => !o.startsWith('sections.cs')).join(','))
+  query = query.or(ors.join(','))
   const { data } = await query
   const byText = ((data as Stepsheet[]) ?? []).filter(Boolean)
   // 스텝 이름 검색은 클라이언트에서 보완
   const { data: all } = await supabase.from('stepsheets').select('*, song:songs(*)').limit(500)
   const extra = ((all as Stepsheet[]) ?? []).filter((s) =>
-    s.sections.some((sec) => sec.steps.some((st) => st.name.includes(term))),
+    stepNames(s.lines).some((n) => n.includes(term)),
   )
   const seen = new Set<string>()
   return [...byText, ...extra].filter((s) => (seen.has(s.id) ? false : (seen.add(s.id), true)))
@@ -125,8 +125,8 @@ export async function saveSheet(input: SaveInput): Promise<Stepsheet> {
     song_id: song.id,
     folder_id: input.folderId,
     creator_name: input.creator_name.trim() || '미상',
-    difficulty: input.difficulty,
-    sections: input.sections,
+    creator_info: input.creator_info.trim(),
+    lines: input.lines,
     memo: input.memo,
     created_by: user.user?.id ?? null,
     updated_at: new Date().toISOString(),
@@ -183,7 +183,8 @@ export async function recognize(files: File[]): Promise<Recognized> {
   if (error) throw error
   if (data?.error) throw new Error(data.error)
   const r = data as Recognized
-  if (!r.sections?.length) r.sections = [{ name: '본문', steps: [] }]
+  if (!r.lines?.length) r.lines = []
+  r.creator_info ??= ''
   return r
 }
 
