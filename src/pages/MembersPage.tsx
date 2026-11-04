@@ -49,7 +49,7 @@ export default function MembersPage() {
 
   return (
     <div className="screen">
-      <TopBar title={`${folder?.name ?? ''} 멤버`} sub={`${members.length}명`} back="/" />
+      <TopBar title={`${folder?.name ?? ''} 멤버`} sub={`${members.length}명`} back="/library" />
       <div className="content">
         {isOwner && (
           <>

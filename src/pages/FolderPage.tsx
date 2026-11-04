@@ -37,7 +37,7 @@ export default function FolderPage() {
       <TopBar
         title={folder?.name ?? '폴더'}
         sub={folder ? `${folder.kind === 'shared' ? '공유 폴더' : '개인 폴더'} · ${songs.length}곡` : undefined}
-        back="/"
+        back="/library"
         right={
           folder?.kind === 'shared' ? (
             <Link to={`/folder/${id}/members`} className="btn pill" style={{ minHeight: 38 }}>

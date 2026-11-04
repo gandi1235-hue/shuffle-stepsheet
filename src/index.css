@@ -62,6 +62,19 @@ h1, h2, h3 { letter-spacing: -0.015em; }
 .hero .search { position: relative; z-index: 1; border: 0; box-shadow: 0 10px 24px -10px rgba(15, 23, 42, 0.35); height: 48px; }
 .hero + .content { padding-top: 0; margin-top: -28px; position: relative; z-index: 1; }
 
+/* ── 첫 화면 메뉴판 ── */
+.menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tile { display: flex; flex-direction: column; gap: 4px; padding: 16px 14px 14px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); text-decoration: none; color: var(--fg); min-height: 120px; transition: transform 0.08s; }
+.tile:active { transform: scale(0.985); }
+.tile.big { min-height: 150px; }
+.tile-ico { width: 44px; height: 44px; border-radius: 13px; background: var(--accent-soft); color: var(--accent-ink); display: flex; align-items: center; justify-content: center; margin-bottom: auto; }
+.tile-ico svg { width: 24px; height: 24px; }
+.tile-title { font-size: 17px; font-weight: 700; margin-top: 10px; letter-spacing: -0.01em; }
+.tile-desc { font-size: 13px; color: var(--faint); line-height: 1.4; }
+.tile.accent { background: var(--grad); border-color: transparent; color: #fff; box-shadow: var(--shadow-float); }
+.tile.accent .tile-ico { background: rgba(255,255,255,0.2); color: #fff; }
+.tile.accent .tile-desc { color: rgba(255,255,255,0.85); }
+
 /* ── 버튼 ── */
 .btn { min-height: 44px; padding: 0 16px; border: 1px solid var(--line-strong); background: var(--surface); border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; color: var(--fg); transition: background 0.15s, transform 0.08s; }
 .btn:active { transform: scale(0.985); }

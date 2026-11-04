@@ -9,6 +9,7 @@ import Login from './pages/Login'
 import MembersPage from './pages/MembersPage'
 import SettingsPage from './pages/SettingsPage'
 import SheetPage from './pages/SheetPage'
+import StartPage from './pages/StartPage'
 
 applyPrefs(loadPrefs())
 
@@ -18,7 +19,8 @@ function Gate() {
   if (!session) return <Login />
   return (
     <Routes>
-      <Route path="/" element={<Home />} />
+      <Route path="/" element={<StartPage />} />
+      <Route path="/library" element={<Home />} />
       <Route path="/folder/:id" element={<FolderPage />} />
       <Route path="/folder/:id/members" element={<MembersPage />} />
       <Route path="/sheet/:id" element={<SheetPage />} />

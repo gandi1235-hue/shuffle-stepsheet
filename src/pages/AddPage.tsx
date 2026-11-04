@@ -260,7 +260,7 @@ export default function AddPage() {
             onClick={async () => {
               if (!confirm('이 스텝지를 삭제할까요? 되돌릴 수 없어요.')) return
               await deleteSheet(editId)
-              nav('/', { replace: true })
+              nav('/library', { replace: true })
             }}
           >
             이 스텝지 삭제

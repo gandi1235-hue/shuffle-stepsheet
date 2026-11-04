@@ -68,7 +68,7 @@ export default function SheetPage() {
       <TopBar
         title={sheet.song?.title ?? ''}
         sub={`${sheet.creator_name}${folder ? ` · ${folder.name}` : ''}`}
-        back="/"
+        back="/library"
         right={
           <>
             {photos.length > 0 && (

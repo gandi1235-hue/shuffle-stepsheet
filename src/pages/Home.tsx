@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import InstallBanner from '../components/InstallBanner'
-import Onboarding from '../components/Onboarding'
+import { Link, useSearchParams } from 'react-router-dom'
 import { EmptyState, Sheet, Skeleton, useToast } from '../components/ui'
 import { haptic } from '../lib/prefs'
 import SongList from '../components/SongList'
 import { createSharedFolder, joinFolder, listFolders, listSongs, searchSheets, type SongWithSheets } from '../lib/api'
 import type { Folder, Stepsheet } from '../lib/types'
-import { Camera, Folder as FolderIcon, Gear, Music, People, Plus, Search, Shared } from '../components/Icons'
+import { Back, Camera, Folder as FolderIcon, Music, People, Plus, Search, Shared } from '../components/Icons'
 
 const roleKo = { owner: '주인', editor: '편집자', viewer: '보기' }
 const SEL = 'selected-folder'
@@ -19,7 +17,8 @@ export default function Home() {
   const [q, setQ] = useState('')
   const [results, setResults] = useState<Stepsheet[] | null>(null)
   const [err, setErr] = useState('')
-  const [dlg, setDlg] = useState<'menu' | 'new' | 'join' | null>(null)
+  const [params] = useSearchParams()
+  const [dlg, setDlg] = useState<'menu' | 'new' | 'join' | null>(params.get('dlg') === 'menu' ? 'menu' : null)
   const [text, setText] = useState('')
   const toast = useToast()
 
@@ -74,12 +73,12 @@ export default function Home() {
     <div className="screen">
       <div className="hero">
         <div className="topbar">
-          <h1 className="brand">스텝지함</h1>
-          <Link to="/settings" className="iconbtn" aria-label="설정">
-            <Gear />
+          <Link to="/" className="iconbtn" aria-label="처음으로">
+            <Back />
           </Link>
+          <h1 className="brand">스텝지함</h1>
         </div>
-        <div className="greet">{folder ? `${folder.name} · ${songs?.length ?? folder.song_count ?? 0}곡` : '셔플댄스 스텝지와 음원을 한곳에'}</div>
+        <div className="greet">{folder ? `${folder.name} · ${songs?.length ?? folder.song_count ?? 0}곡` : '저장된 스텝지'}</div>
         <div className="search">
           <Search />
           <label htmlFor="q" className="sr-only">
@@ -89,8 +88,6 @@ export default function Home() {
         </div>
       </div>
       <div className="content" style={{ paddingBottom: 100 }}>
-        <Onboarding />
-        <InstallBanner />
         {err && <div className="error">{err}</div>}
 
         {results ? (
