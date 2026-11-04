@@ -72,15 +72,14 @@ export default function Home() {
 
   return (
     <div className="screen">
-      <div className="topbar">
-        <h1 className="brand">스텝지함</h1>
-        <Link to="/settings" className="iconbtn" aria-label="설정">
-          <Gear />
-        </Link>
-      </div>
-      <div className="content" style={{ paddingBottom: 100 }}>
-        <Onboarding />
-        <InstallBanner />
+      <div className="hero">
+        <div className="topbar">
+          <h1 className="brand">스텝지함</h1>
+          <Link to="/settings" className="iconbtn" aria-label="설정">
+            <Gear />
+          </Link>
+        </div>
+        <div className="greet">{folder ? `${folder.name} · ${songs?.length ?? folder.song_count ?? 0}곡` : '셔플댄스 스텝지와 음원을 한곳에'}</div>
         <div className="search">
           <Search />
           <label htmlFor="q" className="sr-only">
@@ -88,6 +87,10 @@ export default function Home() {
           </label>
           <input id="q" type="search" placeholder="노래, 가수, 창작자, 스텝 이름" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
+      </div>
+      <div className="content" style={{ paddingBottom: 100 }}>
+        <Onboarding />
+        <InstallBanner />
         {err && <div className="error">{err}</div>}
 
         {results ? (

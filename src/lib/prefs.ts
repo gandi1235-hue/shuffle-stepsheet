@@ -16,10 +16,26 @@ export function loadPrefs(): Prefs {
   }
 }
 
+const ZOOM: Record<FontSize, number> = { normal: 1, large: 1.12, xlarge: 1.25 }
+let zoom = 1
+let listening = false
+
+/** CSS zoom을 쓰면 vh 단위가 틀어져서, 실제 화면 높이를 변수(--app-h)로 직접 넣어 준다 */
+function setViewportVar() {
+  document.documentElement.style.setProperty('--app-h', `${Math.round(window.innerHeight / zoom)}px`)
+}
+
 export function applyPrefs(p: Prefs) {
   const el = document.documentElement
   el.dataset.font = p.font
   el.dataset.contrast = p.contrast ? 'high' : 'normal'
+  zoom = ZOOM[p.font]
+  setViewportVar()
+  if (!listening) {
+    listening = true
+    window.addEventListener('resize', setViewportVar)
+    window.visualViewport?.addEventListener('resize', setViewportVar)
+  }
 }
 
 export function usePrefs(): [Prefs, (patch: Partial<Prefs>) => void] {
