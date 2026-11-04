@@ -671,6 +671,7 @@ a.msg-who { display: block; }
 .bubble { padding: 9px 13px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); font-size: 16px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: var(--shadow); }
 .msg:not(.mine) .bubble { border-top-left-radius: 6px; }
 .msg.mine .bubble { background: var(--accent); border-color: var(--accent); color: #fff; border-top-right-radius: 6px; }
+.bubble.can-del { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .msg-time { font-size: 11px; color: var(--faint); white-space: nowrap; }
 .chatbar { display: flex; align-items: flex-end; gap: 8px; padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface); }
 .chatbar textarea { flex: 1; min-height: 46px; max-height: 120px; padding: 11px 14px; border: 1px solid var(--line-strong); border-radius: 22px; font: inherit; font-size: 16px; resize: none; background: var(--bg); outline: none; }

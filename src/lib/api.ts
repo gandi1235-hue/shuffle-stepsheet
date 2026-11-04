@@ -417,16 +417,23 @@ export async function sendMessage(folderId: string, body: string): Promise<Messa
   return data as Message
 }
 
+/** 메시지 지우기: 내 것, 또는 폴더 주인이면 누구 것이든. 권한이 없으면 DB가 조용히 0줄을 지우므로 그걸 오류로 바꿈 */
 export async function deleteMessage(id: string) {
-  const { error } = await supabase.from('messages').delete().eq('id', id)
+  const { data, error } = await supabase.from('messages').delete().eq('id', id).select('id')
   if (error) throw error
+  if (!data?.length) throw new Error('지울 권한이 없어요 (내 메시지이거나 폴더 주인이어야 해요)')
 }
 
 /** 새 메시지가 오면 cb. 돌려주는 함수를 부르면 구독 해제 */
-export function subscribeMessages(folderId: string, cb: (m: Message) => void): () => void {
+export function subscribeMessages(folderId: string, cb: (m: Message) => void, onDelete?: (id: string) => void): () => void {
   const ch = supabase
     .channel(`messages-${folderId}`)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `folder_id=eq.${folderId}` }, (payload) => cb(payload.new as Message))
+    // 지워진 메시지는 다른 사람 화면에서도 사라지게 (지울 때 old에는 id만 옴)
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, (payload) => {
+      const oldId = (payload.old as { id?: string })?.id
+      if (oldId && onDelete) onDelete(oldId)
+    })
     .subscribe()
   return () => {
     supabase.removeChannel(ch)

@@ -58,6 +58,8 @@ export default function ChatPage() {
       setMsgs((cur) => (cur.some((x) => x.id === m.id) ? cur : [...cur, m]))
       markRead(id)
       if (!membersRef.current[m.user_id]) loadMembers()
+    }, (gone) => {
+      setMsgs((cur) => cur.filter((x) => x.id !== gone))
     })
     return () => {
       markRead(id)
@@ -87,8 +89,12 @@ export default function ChatPage() {
     }
   }
 
+  const owner = folder?.role === 'owner'
+  /** 내 메시지는 누구나, 남의 메시지는 폴더 주인만 (길게 누르기 또는 두 번 누르기) */
   const remove = async (m: Message) => {
-    if (!confirm('이 메시지를 지울까요?')) return
+    const mine = m.user_id === me
+    if (!mine && !owner) return
+    if (!confirm(mine ? '이 메시지를 지울까요?' : `${nameOf(m.user_id)}님의 메시지를 지울까요? (주인 권한)`)) return
     try {
       await deleteMessage(m.id)
       setMsgs((cur) => cur.filter((x) => x.id !== m.id))
@@ -132,9 +138,7 @@ export default function ChatPage() {
                   )}
                   <div className="msg-row">
                     {mine && <span className="msg-time">{timeOf(m.created_at)}</span>}
-                    <div className="bubble" onDoubleClick={mine ? () => remove(m) : undefined}>
-                      {m.body}
-                    </div>
+                    <Bubble text={m.body} onRemove={mine || owner ? () => remove(m) : undefined} />
                     {!mine && <span className="msg-time">{timeOf(m.created_at)}</span>}
                   </div>
                 </div>
@@ -183,6 +187,44 @@ export default function ChatPage() {
           </div>
         )}
       </Modal>
+    </div>
+  )
+}
+
+/** 말풍선: 지울 수 있으면(내 것·주인) 길게 누르거나 두 번 눌러 지움 */
+function Bubble({ text, onRemove }: { text: string; onRemove?: () => void }) {
+  const timer = useRef<number | null>(null)
+  const clear = () => {
+    if (timer.current !== null) window.clearTimeout(timer.current)
+    timer.current = null
+  }
+  const origin = useRef<{ x: number; y: number } | null>(null)
+  const start = (e: React.PointerEvent) => {
+    if (!onRemove) return
+    clear()
+    origin.current = { x: e.clientX, y: e.clientY }
+    timer.current = window.setTimeout(() => {
+      timer.current = null
+      onRemove()
+    }, 600)
+  }
+  // 손가락이 10px 넘게 움직이면(스크롤) 길게 누르기 취소
+  const move = (e: React.PointerEvent) => {
+    const o = origin.current
+    if (o && Math.hypot(e.clientX - o.x, e.clientY - o.y) > 10) clear()
+  }
+  return (
+    <div
+      className={`bubble${onRemove ? ' can-del' : ''}`}
+      onDoubleClick={onRemove}
+      onPointerDown={start}
+      onPointerUp={clear}
+      onPointerLeave={clear}
+      onPointerCancel={clear}
+      onPointerMove={move}
+      onContextMenu={onRemove ? (e) => e.preventDefault() : undefined}
+    >
+      {text}
     </div>
   )
 }
