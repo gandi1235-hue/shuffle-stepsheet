@@ -244,13 +244,14 @@ Deno.serve(async (req) => {
       const frames = (vs.frames ?? []).slice(0, 24);
       const ytUrl = vs.yt_url?.trim();
       const audioIn = !ytUrl && !frames.length && vs.audio?.data ? vs.audio : null; // 음악 파일만 있을 때: Gemini가 듣고 맞춤
-      if (audioIn && !keys.gemini) throw new Error("음악을 AI가 직접 들으려면 Gemini 키가 필요해요 (aistudio.google.com/apikey 에서 무료로 받아 Supabase Secrets에 넣어 주세요)");
+      if (audioIn && !keys.gemini && !keys.openai) throw new Error("음악을 AI가 직접 들으려면 Gemini 키(또는 OpenAI 키)가 필요해요 (aistudio.google.com/apikey 에서 무료로 받아 Supabase Secrets에 넣어 주세요)");
       const bpm = typeof vs.bpm === "number" && vs.bpm > 0 ? vs.bpm : null;
       const beat = bpm ? 60 / bpm : null;
       // 사용자가 말로 한 요청("1번이 반복돼", "중간에 쉬는 데 있어", "전체를 꼼꼼히 봐 줘")이 있으면 영상을 보면서 같이 반영
       const userReq = String(vs.request ?? "").trim();
       const reqSec = userReq ? `\n\n[사용자 요청]\n${userReq}\n\n사용자 요청을 최우선으로 반영합니다(반복·쉼·순서·시작 시각). 요청에 없는 부분은 영상/음악 전체를 처음부터 끝까지 직접 보고 들어 판단하며, 스텝지와 대조해 반복되는 줄·쉬는 구간·순서 바뀜을 스스로 찾습니다. 요청이 영상과 맞지 않으면 영상을 따르고 note에 그 사실을 적습니다.` : "";
-      if (ytUrl && !keys.gemini) throw new Error("유튜브 영상을 AI가 직접 보려면 Gemini 키가 필요해요 (aistudio.google.com/apikey 에서 무료로 받아 Supabase Secrets에 넣어 주세요)");
+      // 유튜브: Gemini가 영상을 통째로 보는 게 기본. Gemini 키가 없거나(한도 초과 등으로) 실패하면 유튜브 미리보기 장면표를 가져와 OpenAI/Claude가 그림으로 맞춤(정확도는 낮음)
+      if (ytUrl && !keys.gemini && !keys.openai && !keys.claude) throw new Error("유튜브 영상을 AI가 보려면 AI 키가 필요해요 (Gemini 키면 영상을 통째로 보고, OpenAI 키면 미리보기 장면으로 맞춰요)");
       const sys = `당신은 셔플댄스 영상을 보고 스텝지의 각 줄이 영상에서 언제 시작되는지 찾아 주는 전문가입니다. 셔플댄스의 기본 스텝(런닝맨: 제자리에서 무릎을 들며 뒤로 미끄러지듯 달리는 동작, 티스텝: 옆으로 발뒤꿈치·발끝을 비틀며 이동, 찰스턴: 앞뒤로 차며 몸을 비트는 동작, 크리스크로스: 두 발을 교차하는 점프, 킥: 발 차기, 스핀/턴: 회전, 글라이드: 미끄러지듯 이동, 킥볼체인지)을 화면에서 알아볼 수 있습니다.
 
 [입력]
@@ -276,17 +277,55 @@ Deno.serve(async (req) => {
       const ask = ask0 + reqSec;
       const run = async () => {
         const inputSec = "[입력]\n- 장면표 그림 여러 장: 영상에서 일정 간격으로 뽑은 프레임을 시간순(왼쪽→오른쪽, 위→아래)으로 붙인 것. 각 칸 왼쪽 위 노란 글씨가 그 장면의 시각(초)입니다.";
-        const t = audioIn
-          ? await viaGeminiMedia({ inline_data: { mime_type: audioIn.media_type || "audio/mpeg", data: audioIn.data } }, keys.gemini!, ask, sys.replace(inputSec, "[입력]\n- 음악 파일 자체(소리만). 시각은 음악의 실제 재생 시각(초)입니다. 춤은 보이지 않으므로 음악의 구조(전주·절·후렴·브릿지)와 박자, 8박 구절 경계로 줄 시작을 추정합니다."), keys.deep === true, "audio")
-          : ytUrl
-          ? await viaGeminiMedia({ file_data: { file_uri: ytUrl } }, keys.gemini!, ask, sys.replace(inputSec, "[입력]\n- 유튜브 영상 자체(그림과 소리). 시각은 영상의 실제 재생 시각(초)입니다."), keys.deep === true, "video")
-          : await askAI(frames, ask, sys, keys, "video");
+        let fallback = ""; // Gemini 없이 우회했을 때 note에 붙일 말
+        /** Gemini를 못 쓸 때: 유튜브 미리보기 장면표(스프라이트 격자)를 가져와 다른 AI가 그림만 보고 맞춤 */
+        const viaStoryboard = async (why: string) => {
+          const vid = ytVideoId(ytUrl!);
+          if (!vid) throw new Error(why);
+          const sb = await ytStoryboard(vid);
+          const imgs: Img[] = sb.images.filter(Boolean).map((data) => ({ media_type: "image/jpeg", data }));
+          const per = sb.cols * sb.rows;
+          const iv = sb.interval;
+          const askSb = `[스텝 줄 목록]\n${(body.lines ?? []).map((l: unknown) => String(l)).join("\n")}\n\n[영상 정보]\n길이 ${Math.round(sb.duration)}초. 유튜브 미리보기 장면표 ${imgs.length}장(시간순). 각 장은 ${sb.cols}×${sb.rows} 격자(왼쪽→오른쪽, 위→아래 순)이고 칸 하나가 ${iv.toFixed(2)}초입니다. 칸에 시각 글씨는 없으니 위치로 계산하세요: k번째 장(0부터)의 r행 c열(0부터) 칸의 시각 = (k×${per} + r×${sb.cols} + c) × ${iv.toFixed(2)}초.${bpm ? ` 박자 ${bpm} BPM → 한 박 ${beat!.toFixed(3)}초, 4박 ${(beat! * 4).toFixed(2)}초, 8박 ${(beat! * 8).toFixed(2)}초.` : " 박자는 아직 모릅니다."}\n\n장면표를 처음부터 끝까지 보고 각 줄의 시작 시각을 찾아 JSON으로 답해 주세요. 소리는 들을 수 없으니 동작이 바뀌는 지점과 박자 격자로 판단합니다.${reqSec}`;
+          const sysSb = sys
+            .replace(inputSec, "[입력]\n- 유튜브 미리보기 장면표 여러 장: 영상에서 일정 간격으로 뽑은 작은 프레임을 시간순(왼쪽→오른쪽, 위→아래)으로 격자로 붙인 것. 칸에 시각 글씨는 없고, 칸의 순서와 칸당 초로 시각을 계산합니다. 소리는 없습니다.")
+            .replace(`장면 간격이 ${vs.step}초라`, `장면 간격이 ${iv.toFixed(1)}초라`);
+          console.log(`[video] storyboard fallback (${why.slice(0, 80)}): ${imgs.length} sprites, grid ${sb.cols}x${sb.rows}, ${iv.toFixed(2)}s/cell`);
+          const out = await askAI(imgs, askSb, sysSb, { ...keys, gemini: undefined }, "video");
+          fallback = " · 미리보기 장면으로만 맞춤(정확도 낮음)";
+          return out;
+        };
+        const viaYt = async () => {
+          const sysYt = sys.replace(inputSec, "[입력]\n- 유튜브 영상 자체(그림과 소리). 시각은 영상의 실제 재생 시각(초)입니다.");
+          if (!keys.gemini) return viaStoryboard("Gemini 키 없음");
+          try {
+            return await viaGeminiMedia({ file_data: { file_uri: ytUrl! } }, keys.gemini, ask, sysYt, keys.deep === true, "video");
+          } catch (e) {
+            const msg = (e as Error).message;
+            if (!keys.openai && !keys.claude) throw e;
+            console.error(`[video] gemini failed, trying storyboard: ${msg.slice(0, 200)}`);
+            return viaStoryboard(msg);
+          }
+        };
+        const viaAudio = async () => {
+          const sysAu = sys.replace(inputSec, "[입력]\n- 음악 파일 자체(소리만). 시각은 음악의 실제 재생 시각(초)입니다. 춤은 보이지 않으므로 음악의 구조(전주·절·후렴·브릿지)와 박자, 8박 구절 경계로 줄 시작을 추정합니다.");
+          if (!keys.gemini) return viaOpenAIAudio(audioIn!, keys.openai!, ask, sysAu);
+          try {
+            return await viaGeminiMedia({ inline_data: { mime_type: audioIn!.media_type || "audio/mpeg", data: audioIn!.data } }, keys.gemini, ask, sysAu, keys.deep === true, "audio");
+          } catch (e) {
+            if (!keys.openai) throw e;
+            console.error(`[audio] gemini failed, trying openai: ${(e as Error).message.slice(0, 200)}`);
+            return viaOpenAIAudio(audioIn!, keys.openai, ask, sysAu);
+          }
+        };
+        const t = audioIn ? await viaAudio() : ytUrl ? await viaYt() : await askAI(frames, ask, sys, keys, "video");
         const s0 = t.indexOf("{"); const e0 = t.lastIndexOf("}");
         const j = s0 >= 0 ? JSON.parse(t.slice(s0, e0 + 1)) : {};
         const plan = Array.isArray(j.plan) ? j.plan : [];
         const order = plan.filter((p: { line?: number }) => typeof p?.line === "number").map((p: { line: number }) => p.line);
         console.log(`[video] plan ${plan.length} items, confidence=${j.confidence ?? "?"}, note=${j.note ?? ""}`);
-        return { plan, order, start_at: j.start_at ?? null, bpm: j.bpm ?? null, note: j.note ? `${j.note}${j.confidence && j.confidence !== "high" ? ` (확신 ${j.confidence === "low" ? "낮음" : "보통"})` : ""}` : "", unclear: j.unclear ?? "" };
+        const note = j.note ? `${j.note}${j.confidence && j.confidence !== "high" ? ` (확신 ${j.confidence === "low" ? "낮음" : "보통"})` : ""}` : "";
+        return { plan, order, start_at: j.start_at ?? null, bpm: j.bpm ?? null, note: note || fallback ? `${note}${fallback}` : "", unclear: j.unclear ?? "" };
       };
       // 오래 걸리는 일: 앱이 화면을 떠나거나 꺼져도 서버에서 이어서 돌리고 결과를 ai_jobs에 남김 (앱은 작업 번호로 확인)
       if (body.async) {
@@ -401,6 +440,50 @@ function detectKeys(): Keys {
   return { openai, claude, gemini };
 }
 const ASK = "이 스텝지를 위 양식의 JSON으로 정리해 주세요.";
+
+/** 유튜브 주소(watch?v=, youtu.be/, shorts/, embed/)에서 영상 ID */
+function ytVideoId(url: string): string | null {
+  const m = url.match(/(?:v=|youtu\.be\/|shorts\/|embed\/|live\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : /^[A-Za-z0-9_-]{11}$/.test(url.trim()) ? url.trim() : null;
+}
+
+/**
+ * OpenAI로 음악 듣기(Gemini 대신): 채팅 API의 input_audio는 mp3·wav만 받음. 모델은 오디오 입력이 되는 것을 순서대로 시도
+ */
+async function viaOpenAIAudio(audio: Img, key: string, ask: string, sys: string): Promise<string> {
+  const mt = (audio.media_type || "").toLowerCase();
+  const format = /mpeg|mp3/.test(mt) ? "mp3" : /wav/.test(mt) ? "wav" : "";
+  if (!format) throw new Error(`OpenAI는 mp3·wav 음악만 들을 수 있어요 (지금 파일: ${mt || "형식 모름"}). Gemini 키를 넣으면 다른 형식도 돼요`);
+  const models = [Deno.env.get("OPENAI_AUDIO_MODEL")?.trim() || "", "gpt-audio", "gpt-4o-audio-preview"].filter(Boolean);
+  let lastMsg = "";
+  for (const model of models) {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model,
+        modalities: ["text"],
+        messages: [
+          { role: "system", content: sys },
+          { role: "user", content: [{ type: "text", text: /json/i.test(ask) ? ask : `${ask}\n\n(답은 JSON으로만)` }, { type: "input_audio", input_audio: { data: audio.data, format } }] },
+        ],
+      }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      lastMsg = String(j?.error?.message ?? `HTTP ${res.status}`);
+      console.error(`[openai] audio ${model}: ${res.status} ${lastMsg.slice(0, 200)}`);
+      continue;
+    }
+    const text = String(j?.choices?.[0]?.message?.content ?? "");
+    if (text.includes("{")) {
+      console.log(`[audio] ok via openai ${model}`);
+      return text;
+    }
+    lastMsg = `${model}: 빈 답`;
+  }
+  throw new Error(`OpenAI가 음악을 듣지 못했어요: ${lastMsg.slice(0, 160)}`);
+}
 
 /**
  * 유튜브 스토리보드: 영상 페이지의 playerStoryboardSpecRenderer.spec 을 읽어 스프라이트 그림(JPEG)들을 가져온다.
