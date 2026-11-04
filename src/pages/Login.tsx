@@ -34,8 +34,8 @@ export default function Login() {
     <div className="login">
       <div>
         <div className="mark"><Dancer /></div>
-        <h1>스텝지함</h1>
-        <p>셔플댄스 스텝지와 음원을 한곳에</p>
+        <h1>ShuffleBox</h1>
+        <p>셔플박스 · 셔플댄스 스텝지와 음원을 한곳에</p>
       </div>
       {!configured && <div className="error">Supabase 설정(.env)이 아직 없습니다. README를 참고해 VITE_SUPABASE_URL과 VITE_SUPABASE_ANON_KEY를 넣어 주세요.</div>}
       {KAKAO_ENABLED && (

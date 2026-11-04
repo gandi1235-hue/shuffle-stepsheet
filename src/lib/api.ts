@@ -254,3 +254,46 @@ export async function transferOwner(folderId: string, userId: string) {
   const { error } = await supabase.rpc('transfer_folder_owner', { fid: folderId, new_owner: userId })
   if (error) throw error
 }
+
+/** 노래 제목으로 가수 추정 (AI) — 실패하면 빈 문자열 */
+export async function guessArtist(title: string): Promise<string> {
+  if (!title.trim()) return ''
+  try {
+    const { data, error } = await supabase.functions.invoke('recognize', { body: { title: title.trim() } })
+    if (error || !data || data.error) return ''
+    return String(data.artist ?? '').trim()
+  } catch {
+    return ''
+  }
+}
+
+export async function updateMemo(id: string, memo: string) {
+  const { error } = await supabase.from('stepsheets').update({ memo, updated_at: new Date().toISOString() }).eq('id', id)
+  if (error) throw error
+}
+
+/** 스텝지를 다른 폴더로 복사 (음원·사진 파일도 새 폴더 경로로 다시 올림) */
+export async function copySheet(id: string, targetFolderId: string): Promise<Stepsheet> {
+  const src = await getSheet(id)
+  if (!src) throw new Error('스텝지를 찾을 수 없어요')
+  const refetch = async (bucket: 'audio' | 'photos', path: string) => {
+    const url = await signedUrl(bucket, path)
+    const blob = await (await fetch(url)).blob()
+    const name = path.split('/').pop() ?? 'file'
+    return new File([blob], name, { type: blob.type })
+  }
+  const audioFile = src.audio_path ? await refetch('audio', src.audio_path) : null
+  const photoFiles = await Promise.all((src.photo_paths ?? []).map((p) => refetch('photos', p)))
+  return saveSheet({
+    title: src.song?.title ?? '',
+    artist: src.song?.artist ?? '',
+    creator_name: src.creator_name,
+    creator_info: src.creator_info,
+    memo: src.memo,
+    lines: src.lines,
+    folderId: targetFolderId,
+    audioFile,
+    audioUrl: src.audio_url ?? '',
+    photoFiles,
+  })
+}

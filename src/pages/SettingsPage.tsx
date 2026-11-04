@@ -60,7 +60,7 @@ export default function SettingsPage() {
         </section>
 
         <div className="panel-desc" style={{ textAlign: 'center' }}>
-          스텝지함 · 버전 {__APP_VERSION__}
+          ShuffleBox · 버전 {__APP_VERSION__}
         </div>
       </div>
     </div>

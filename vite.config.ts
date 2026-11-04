@@ -11,8 +11,8 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: '스텝지함',
-        short_name: '스텝지함',
+        name: 'ShuffleBox',
+        short_name: 'ShuffleBox',
         description: '셔플댄스 스텝지와 음원을 한곳에',
         lang: 'ko',
         theme_color: '#0a0a0b',

@@ -5,7 +5,7 @@ import { haptic } from '../lib/prefs'
 import SongList from '../components/SongList'
 import { createSharedFolder, joinFolder, listFolders, listSongs, searchSheets, type SongWithSheets } from '../lib/api'
 import type { Folder, Stepsheet } from '../lib/types'
-import { Back, Camera, Folder as FolderIcon, Music, People, Plus, Search, Shared } from '../components/Icons'
+import { Back, Camera, Folder as FolderIcon, Music, People, Plus, Search, Shared, Brand } from '../components/Icons'
 
 const roleKo = { owner: '주인', editor: '편집자', viewer: '보기' }
 const SEL = 'selected-folder'
@@ -76,7 +76,7 @@ export default function Home() {
           <Link to="/" className="iconbtn" aria-label="처음으로">
             <Back />
           </Link>
-          <h1 className="brand">스텝지함</h1>
+          <h1 className="brand"><Brand /></h1>
         </div>
         <div className="greet">{folder ? `${folder.name} · ${songs?.length ?? folder.song_count ?? 0}곡` : '저장된 스텝지'}</div>
         <div className="search">

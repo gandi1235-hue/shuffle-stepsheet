@@ -4,7 +4,7 @@ import TopBar from '../components/TopBar'
 import { useToast } from '../components/ui'
 import { haptic } from '../lib/prefs'
 import { Camera, Photo } from '../components/Icons'
-import { deleteSheet, findDuplicate, getSheet, listFolders, recognize, saveSheet } from '../lib/api'
+import { deleteSheet, findDuplicate, getSheet, guessArtist, listFolders, recognize, saveSheet } from '../lib/api'
 import { emptyLine, emptyRecognized, emptyStep, type Folder, type Line, type Recognized } from '../lib/types'
 
 type Stage = 'photo' | 'recognizing' | 'edit' | 'saving'
@@ -80,8 +80,15 @@ export default function AddPage() {
     if (!data.title.trim()) return setErr('안무곡(노래 제목)은 꼭 적어 주세요.')
     if (!data.creator_name.trim()) return setErr('응시자(창작자 이름)는 꼭 적어 주세요.')
     if (!folderId) return setErr('저장할 폴더를 골라 주세요.')
+    const unsure = data.lines.reduce((n, l) => n + l.steps.filter((s) => s.uncertain && s.name.trim()).length, 0)
+    if (unsure > 0 && !confirm(`노란 칸(확실하지 않은 글자)이 ${unsure}개 남아 있어요.\n확인: 그대로 저장 (노란 표시는 남아요) / 취소: 돌아가서 고치기`)) return
     setStage('saving')
     try {
+      let artist = data.artist.trim()
+      if (!artist) {
+        artist = await guessArtist(data.title)
+        if (artist) setData((d) => ({ ...d, artist }))
+      }
       let overwriteId = editId
       if (!editId) {
         const dup = await findDuplicate(folderId, data.title, data.artist, data.creator_name)
@@ -96,8 +103,9 @@ export default function AddPage() {
       }
       const cleaned: Recognized = {
         ...data,
+        artist,
         lines: data.lines
-          .map((l) => ({ steps: l.steps.filter((s) => s.name.trim()).map((s) => ({ name: s.name.trim(), beats: s.beats.trim() })) }))
+          .map((l) => ({ steps: l.steps.filter((s) => s.name.trim()).map((s) => ({ name: s.name.trim(), beats: s.beats.trim(), ...(s.uncertain ? { uncertain: true } : {}) })) }))
           .filter((l) => l.steps.length),
       }
       const saved = await saveSheet({ ...cleaned, folderId, audioFile, audioUrl: audioUrl.trim(), photoFiles: files, overwriteId })
@@ -180,7 +188,7 @@ export default function AddPage() {
             </div>
             <div>
               사진에서 읽은 내용이에요. 틀린 칸을 눌러 고친 뒤 저장하세요.
-              <div className="warnnote">노란 칸은 확실하지 않은 글자</div>
+              <div className="warnnote">노란 칸은 확실하지 않은 글자예요. 고치면 노란색이 사라지고, 그대로 두고 저장도 돼요.</div>
             </div>
           </div>
         )}
@@ -193,8 +201,18 @@ export default function AddPage() {
           </div>
           <div className="k">안무곡 *</div>
           <div className="v pad v2">
-            <input aria-label="노래 제목" placeholder="노래 제목" value={data.title} onChange={(e) => setData({ ...data, title: e.target.value })} />
-            <input aria-label="가수" placeholder="가수 (선택)" value={data.artist} onChange={(e) => setData({ ...data, artist: e.target.value })} />
+            <input
+              aria-label="노래 제목"
+              placeholder="노래 제목"
+              value={data.title}
+              onChange={(e) => setData({ ...data, title: e.target.value })}
+              onBlur={async () => {
+                if (data.artist.trim() || !data.title.trim()) return
+                const a = await guessArtist(data.title)
+                if (a) setData((d) => (d.artist.trim() ? d : { ...d, artist: a }))
+              }}
+            />
+            <input aria-label="가수" placeholder="가수 (비우면 자동으로 찾아요)" value={data.artist} onChange={(e) => setData({ ...data, artist: e.target.value })} />
           </div>
         </div>
 

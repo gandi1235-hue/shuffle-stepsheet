@@ -5,13 +5,23 @@ import { compareKo, initialLabel, initialOf, initialRank } from '../lib/hangul'
 import { sheetStats } from '../lib/types'
 import { Chevron, Music } from '../components/Icons'
 
+const normTitle = (t: string) => t.toLowerCase().replace(/[\s\-_.,!?'"()\[\]~·]/g, '')
+
 /** 가나다순 · ㄱㄴㄷ 구분 · 같은 곡은 "제목 (3)"으로 묶고 눌러서 펼치기 */
 export default function SongList({ songs, grouped = true }: { songs: SongWithSheets[]; grouped?: boolean }) {
   const nav = useNavigate()
   const [open, setOpen] = useState<Record<string, boolean>>({})
 
   const sections = useMemo(() => {
-    const sorted = [...songs].sort((a, b) => compareKo(a.title, b.title))
+    // 같은 제목(띄어쓰기·대소문자·기호 무시)은 가수가 달라도 한 묶음으로
+    const byTitle = new Map<string, SongWithSheets>()
+    for (const s of songs) {
+      const k = normTitle(s.title)
+      const cur = byTitle.get(k)
+      if (!cur) byTitle.set(k, { ...s, sheets: [...s.sheets] })
+      else byTitle.set(k, { ...cur, artist: cur.artist || s.artist, sheets: [...cur.sheets, ...s.sheets] })
+    }
+    const sorted = [...byTitle.values()].sort((a, b) => compareKo(a.title, b.title))
     if (!grouped) return [{ key: '', items: sorted }]
     const map = new Map<string, SongWithSheets[]>()
     for (const s of sorted) {

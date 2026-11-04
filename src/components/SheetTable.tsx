@@ -8,10 +8,12 @@ interface Props {
   lines: Line[]
   memo?: string
   big?: boolean
+  /** 있으면 참고 줄을 눌러 메모를 고칠 수 있음 */
+  onMemo?: () => void
 }
 
 /** 대한셔플댄스협회 스텝지 양식: 머리말 표 + 한 줄에 스텝 1~2개 (N박). 화면·인쇄 공용 */
-export default function SheetTable({ title, artist, creator, creatorInfo, lines, memo, big }: Props) {
+export default function SheetTable({ title, artist, creator, creatorInfo, lines, memo, big, onMemo }: Props) {
   const st = sheetStats(lines)
   const rows = lines.map((l) => l.steps.filter((s) => s.name.trim()))
   return (
@@ -49,10 +51,10 @@ export default function SheetTable({ title, artist, creator, creatorInfo, lines,
         </li>
       </ol>
 
-      {memo && (
-        <div className="form-memo">
+      {(memo || onMemo) && (
+        <div className={onMemo ? 'form-memo tap' : 'form-memo'} onClick={onMemo} role={onMemo ? 'button' : undefined}>
           <span className="k">참고</span>
-          <span>{memo}</span>
+          <span className={memo ? '' : 'ph no-print'}>{memo || '+ 메모 적기'}</span>
         </div>
       )}
       <div className="form-stats">

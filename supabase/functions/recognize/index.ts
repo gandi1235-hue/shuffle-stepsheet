@@ -17,7 +17,7 @@ const SYSTEM = `당신은 셔플댄스 스텝지(대한셔플댄스협회 양식
 반드시 아래 JSON만 출력하세요(설명 금지).
 {
   "title": "안무곡(노래 제목) 또는 빈 문자열",
-  "artist": "가수(원곡) 또는 빈 문자열",
+  "artist": "가수(원곡). 사진에 없으면 노래 제목으로 알 수 있는 가수를 채워 넣기 (모르면 빈 문자열)",
   "creator_name": "응시자 이름(첫 번째 '/' 앞) 또는 빈 문자열",
   "creator_info": "이름 뒤의 기수/지부 (예: '34기/대구수성') 또는 빈 문자열",
   "memo": "참고 줄의 내용(없으면 빈 문자열)",
@@ -31,11 +31,21 @@ const SYSTEM = `당신은 셔플댄스 스텝지(대한셔플댄스협회 양식
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    const { images } = await req.json() as { images: { media_type: string; data: string }[] };
-    if (!images?.length) throw new Error("이미지가 없습니다");
-
+    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string };
     const geminiKey = findKey(/gemini|google/i);
     const claudeKey = findKey(/ant.?h?rop|claude/i);
+
+    // 가수 추정 모드: { title } 만 오면 노래 제목으로 가수를 알려 줌
+    if (body.title && !body.images?.length) {
+      const q = `노래 제목: "${body.title.trim()}"\n이 노래의 가수(원곡 가수) 이름만 한국어로 답하세요. 모르거나 애매하면 빈 문자열. 반드시 JSON {"artist": "..."} 만 출력.`;
+      const t = geminiKey ? await viaGemini([], geminiKey, q) : claudeKey ? await viaClaude([], claudeKey, q) : "";
+      const s0 = t.indexOf("{"); const e0 = t.lastIndexOf("}");
+      const artist = s0 >= 0 ? String(JSON.parse(t.slice(s0, e0 + 1)).artist ?? "") : "";
+      return new Response(JSON.stringify({ artist }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const images = body.images ?? [];
+    if (!images.length) throw new Error("이미지가 없습니다");
     const text = geminiKey
       ? await viaGemini(images, geminiKey)
       : claudeKey
@@ -67,7 +77,7 @@ function findKey(pattern: RegExp): string | undefined {
 }
 const ASK = "이 스텝지를 위 양식의 JSON으로 정리해 주세요.";
 
-async function viaGemini(images: Img[], key: string): Promise<string> {
+async function viaGemini(images: Img[], key: string, ask = ASK): Promise<string> {
   const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -78,7 +88,7 @@ async function viaGemini(images: Img[], key: string): Promise<string> {
         systemInstruction: { parts: [{ text: SYSTEM }] },
         contents: [{
           role: "user",
-          parts: [...images.map((i) => ({ inline_data: { mime_type: i.media_type, data: i.data } })), { text: ASK }],
+          parts: [...images.map((i) => ({ inline_data: { mime_type: i.media_type, data: i.data } })), { text: ask }],
         }],
         generationConfig: { responseMimeType: "application/json", temperature: 0 },
       }),
@@ -89,7 +99,7 @@ async function viaGemini(images: Img[], key: string): Promise<string> {
   return (j.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? "").join("");
 }
 
-async function viaClaude(images: Img[], key: string): Promise<string> {
+async function viaClaude(images: Img[], key: string, ask = ASK): Promise<string> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -105,7 +115,7 @@ async function viaClaude(images: Img[], key: string): Promise<string> {
         role: "user",
         content: [
           ...images.map((i) => ({ type: "image", source: { type: "base64", media_type: i.media_type, data: i.data } })),
-          { type: "text", text: ASK },
+          { type: "text", text: ask },
         ],
       }],
     }),

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import InstallBanner from '../components/InstallBanner'
 import Onboarding from '../components/Onboarding'
-import { Camera, Chevron, Folder as FolderIcon, Gear, Music, People } from '../components/Icons'
+import { Camera, Chevron, Folder as FolderIcon, Gear, Music, People, Brand } from '../components/Icons'
 import { listFolders, recentSheets } from '../lib/api'
 import type { Folder, Stepsheet } from '../lib/types'
 
@@ -23,7 +23,7 @@ export default function StartPage() {
     <div className="screen">
       <div className="hero">
         <div className="topbar">
-          <h1 className="brand">스텝지함</h1>
+          <h1 className="brand"><Brand /></h1>
           <Link to="/settings" className="iconbtn" aria-label="설정">
             <Gear />
           </Link>

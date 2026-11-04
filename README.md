@@ -1,4 +1,4 @@
-# 스텝지함 — 셔플댄스 스텝지 앱
+# ShuffleBox(셔플박스) — 셔플댄스 스텝지 앱
 
 **앱 주소:** https://gandi1235-hue.github.io/shuffle-stepsheet/
 
