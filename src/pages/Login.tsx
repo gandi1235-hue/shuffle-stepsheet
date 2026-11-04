@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { configured, supabase } from '../lib/supabase'
 
 const appUrl = () => window.location.href.split('#')[0]
+// 카카오 로그인은 Supabase에서 Kakao provider를 켠 뒤 true로 바꿉니다.
+const KAKAO_ENABLED = false
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -28,9 +30,11 @@ export default function Login() {
         <p>셔플댄스 스텝지와 음원을 한곳에</p>
       </div>
       {!configured && <div className="error">Supabase 설정(.env)이 아직 없습니다. README를 참고해 VITE_SUPABASE_URL과 VITE_SUPABASE_ANON_KEY를 넣어 주세요.</div>}
-      <button type="button" className="btn big block kakao" onClick={kakao}>
-        카카오로 시작하기
-      </button>
+      {KAKAO_ENABLED && (
+        <button type="button" className="btn big block kakao" onClick={kakao}>
+          카카오로 시작하기
+        </button>
+      )}
       <form onSubmit={magic} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div className="field">
           <label htmlFor="email">이메일로 로그인 링크 받기</label>
