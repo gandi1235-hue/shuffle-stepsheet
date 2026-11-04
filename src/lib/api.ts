@@ -176,9 +176,14 @@ export async function findDuplicate(folderId: string, title: string, artist: str
   return data?.id ?? null
 }
 
+/** 스텝지 삭제 (붙어 있던 음원·사진 파일도 함께 지움) */
 export async function deleteSheet(id: string) {
+  const { data: s } = await supabase.from('stepsheets').select('audio_path, photo_paths').eq('id', id).maybeSingle()
   const { error } = await supabase.from('stepsheets').delete().eq('id', id)
   if (error) throw error
+  const row = s as { audio_path?: string | null; photo_paths?: string[] | null } | null
+  if (row?.audio_path) await supabase.storage.from('audio').remove([row.audio_path]).catch(() => undefined)
+  if (row?.photo_paths?.length) await supabase.storage.from('photos').remove(row.photo_paths).catch(() => undefined)
 }
 
 export async function recognize(files: File[]): Promise<Recognized> {

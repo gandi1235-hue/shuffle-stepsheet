@@ -4,6 +4,8 @@ import Avatar from '../components/Avatar'
 import { Sheet as Modal } from '../components/ui'
 import InstallBanner from '../components/InstallBanner'
 import Onboarding from '../components/Onboarding'
+import Tour from '../components/Tour'
+import { ONBOARD_KEY } from '../lib/tour'
 import { Camera, Chat, Chevron, Folder as FolderIcon, Gear, Music, People, Brand } from '../components/Icons'
 import { getProfile, listFolders, recentSheets, unreadCounts, type Profile } from '../lib/api'
 import type { Folder, Stepsheet } from '../lib/types'
@@ -15,6 +17,7 @@ export default function StartPage() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [pick, setPick] = useState(false)
   const [unread, setUnread] = useState<Map<string, number>>(new Map())
+  const [onboarded, setOnboarded] = useState(() => localStorage.getItem(ONBOARD_KEY) === '1') // 카드뉴스를 다 본 뒤에 둘러보기 시작
   const nav = useNavigate()
 
   useEffect(() => {
@@ -49,7 +52,7 @@ export default function StartPage() {
             <Link to="/profile" className="iconbtn" aria-label="내 프로필">
               <Avatar path={profile?.avatar_path} name={profile?.nickname || profile?.display_name || '나'} userId={profile?.id} size={30} />
             </Link>
-            <Link to="/settings" className="iconbtn" aria-label="설정">
+            <Link to="/settings" className="iconbtn" aria-label="설정" data-tour="settings">
               <Gear />
             </Link>
           </div>
@@ -57,11 +60,24 @@ export default function StartPage() {
         <div className="greet">오늘은 어떤 스텝을 출까요?</div>
       </div>
       <div className="content">
-        <Onboarding />
+        <Onboarding onDone={() => setOnboarded(true)} />
+        {onboarded && (
+          <Tour
+            name="start"
+            ready={folders.length > 0}
+            steps={[
+              { sel: '[data-tour="library"]', title: '스텝지함', desc: '저장된 스텝지는 다 여기 있어요. 곡 이름이나 스텝 이름으로 찾을 수도 있어요.' },
+              { sel: '[data-tour="add"]', title: '새 스텝지 등록', desc: '종이 스텝지를 찍어 올리면 AI가 읽어 줘요. 음원 파일이나 유튜브 링크도 여기서 붙여요.' },
+              { sel: '[data-tour="shared"]', title: '공유 폴더', desc: '반 친구들과 같이 볼 폴더를 만들거나, 받은 초대 코드로 들어가요.' },
+              { sel: '[data-tour="chat"]', title: '멤버 톡', desc: '같은 폴더 멤버들과 짧게 이야기해요.' },
+              { sel: '[data-tour="settings"]', title: '설정', desc: '글자 크기를 키우거나, 이 안내를 다시 볼 수 있어요. 스텝지를 열면 거기서도 한 번 더 안내해 드려요.' },
+            ]}
+          />
+        )}
         <InstallBanner />
 
         <div className="menu-grid">
-          <Link to="/library" className="tile big">
+          <Link to="/library" className="tile big" data-tour="library">
             <span className="tile-ico">
               <FolderIcon />
             </span>
@@ -71,21 +87,21 @@ export default function StartPage() {
               {songs > 0 && ` · ${songs}곡`}
             </span>
           </Link>
-          <Link to={canAdd ? '/add' : '/library'} className="tile big accent">
+          <Link to={canAdd ? '/add' : '/library'} className="tile big accent" data-tour="add">
             <span className="tile-ico">
               <Camera />
             </span>
             <span className="tile-title">새 스텝지 등록</span>
             <span className="tile-desc">사진 찍어서 바로 올리기</span>
           </Link>
-          <Link to="/library?dlg=menu" className="tile">
+          <Link to="/library?dlg=menu" className="tile" data-tour="shared">
             <span className="tile-ico">
               <People />
             </span>
             <span className="tile-title">공유 폴더</span>
             <span className="tile-desc">만들기 · 초대 코드로 참여</span>
           </Link>
-          <button type="button" className="tile" onClick={openChat}>
+          <button type="button" className="tile" onClick={openChat} data-tour="chat">
             <span className="tile-ico">
               <Chat />
               {unreadTotal > 0 && <span className="badge">{unreadTotal > 99 ? '99+' : unreadTotal}</span>}

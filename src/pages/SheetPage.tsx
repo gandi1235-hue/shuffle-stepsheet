@@ -4,9 +4,10 @@ import Player, { isVideoSrc, type PlayerHandle } from '../components/Player'
 import YouTubePlayer, { youtubeId } from '../components/YouTubePlayer'
 import SheetTable from '../components/SheetTable'
 import TopBar from '../components/TopBar'
+import Tour from '../components/Tour'
 import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
 import { Copy, Doc, Edit, LayoutSide, LayoutTop, More, Photo, Print, Share } from '../components/Icons'
-import { copySheet, getFolder, getSheet, listFolders, moveSheet, setFinalized, signedUrl, updateMemo, updateSync } from '../lib/api'
+import { copySheet, deleteSheet, getFolder, getSheet, listFolders, moveSheet, setFinalized, signedUrl, updateMemo, updateSync } from '../lib/api'
 import { activeLine, eventsOf, savedBpm, withSync, type Folder, type Stepsheet } from '../lib/types'
 import { bpmFromEvents, defaultEvents } from '../lib/sync'
 import { useMedia, usePrefs } from '../lib/prefs'
@@ -120,6 +121,19 @@ export default function SheetPage() {
     }
   }
 
+  const removeSheet = async () => {
+    const title = sheet.song?.title ?? '이 스텝지'
+    if (!confirm(`"${title}" 스텝지를 삭제할까요?\n붙어 있던 음원·사진도 같이 지워지고 되돌릴 수 없어요.`)) return
+    if (sheet.finalized && !confirm('⚠️ "수정 완료"로 표시된 스텝지예요. 정말 삭제할까요?')) return
+    try {
+      await deleteSheet(sheet.id)
+      toast('스텝지를 삭제했어요')
+      nav(`/folder/${sheet.folder_id}`, { replace: true })
+    } catch (e) {
+      toast((e as Error).message)
+    }
+  }
+
   const openFolders = async (mode: 'copy' | 'move') => {
     const fs = await listFolders()
     setFolders(fs.filter((f) => (f.role === 'owner' || f.role === 'editor') && f.id !== sheet.folder_id))
@@ -176,7 +190,7 @@ export default function SheetPage() {
         </div>
       )}
       {canEdit && hasPlayer && (
-        <button type="button" className={hasSaved ? 'btn sync on' : 'btn sync'} onClick={() => nav(`/sheet/${sheet.id}/sync`)}>
+        <button type="button" className={hasSaved ? 'btn sync on' : 'btn sync'} onClick={() => nav(`/sheet/${sheet.id}/sync`)} data-tour="sync">
           {hasSaved ? '동기화 교정' : playingYt ? '동기화 맞추기' : '노래 동기화'}
         </button>
       )}
@@ -203,14 +217,14 @@ export default function SheetPage() {
               </button>
             )}
             {canEdit && (
-              <button type="button" className="iconbtn" aria-label="수정" onClick={goEdit}>
+              <button type="button" className="iconbtn" aria-label="수정" onClick={goEdit} data-tour="edit">
                 <Edit />
               </button>
             )}
             <button type="button" className={docView ? 'iconbtn on' : 'iconbtn'} aria-label="문서로 보기" aria-pressed={docView} onClick={() => setDocView(!docView)}>
               <Doc />
             </button>
-            <button type="button" className="iconbtn" aria-label="더 보기" onClick={() => setMenu('more')}>
+            <button type="button" className="iconbtn" aria-label="더 보기" onClick={() => setMenu('more')} data-tour="more">
               <More />
             </button>
           </>
@@ -248,6 +262,12 @@ export default function SheetPage() {
             <span className="grow"><b>동기화 지우기</b><span>저장된 줄별 시각을 지워요</span></span>
           </button>
         )}
+        {canEdit && (
+          <button type="button" className="menu-item danger" onClick={() => { setMenu(null); removeSheet() }}>
+            <span className="ico">🗑</span>
+            <span className="grow"><b>스텝지 삭제</b><span>이 스텝지와 음원·사진을 지워요. 되돌릴 수 없어요</span></span>
+          </button>
+        )}
       </Modal>
       <Modal open={menu === 'copy' || menu === 'move'} title={menu === 'move' ? '어느 폴더로 옮길까요?' : '어느 폴더로 복사할까요?'} onClose={() => setMenu(null)}>
         {folders.length === 0 && <div className="notice">보낼 수 있는 폴더가 없어요. 편집 권한이 있는 다른 폴더가 필요해요.</div>}
@@ -258,6 +278,16 @@ export default function SheetPage() {
         ))}
       </Modal>
 
+      <Tour
+        name="sheet"
+        ready={Boolean(folder)}
+        steps={[
+          { sel: '[data-tour="sync"]', title: '노래에 맞추기', desc: '여기서 AI가 노래를 듣고 줄마다 시작을 찾아요. 맞춰 두면 재생할 때 지금 추는 줄이 표시돼요.' },
+          { sel: '[data-tour="edit"]', title: '고치기', desc: '글자가 틀렸거나 줄을 바꾸고 싶으면 연필을 누르세요. 말로 고칠 수도 있어요.' },
+          { sel: '[data-tour="final"]', title: '수정 완료', desc: '검토가 끝나면 눌러 두세요. 그 뒤로 고치려 하면 먼저 물어봐요.' },
+          { sel: '[data-tour="more"]', title: '더 보기', desc: '인쇄, 링크 공유, 다른 폴더로 복사·옮기기가 여기 있어요.' },
+        ]}
+      />
       {sheet.finalized ? (
         <div className="final-chip no-print">
           <span className="grow">✔ 수정 완료 · 검토가 끝난 스텝지예요{canEdit ? '. 고치려면 한 번 더 물어봐요' : ''}</span>
@@ -271,7 +301,7 @@ export default function SheetPage() {
         canEdit && (
           <div className="final-row no-print">
             <span className="grow">검토가 끝났으면 표시해 두세요. 이후 고치려 하면 경고해요.</span>
-            <button type="button" className="btn tiny final-btn" onClick={toggleFinalized}>
+            <button type="button" className="btn tiny final-btn" onClick={toggleFinalized} data-tour="final">
               ✔ 수정 완료
             </button>
           </div>

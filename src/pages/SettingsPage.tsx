@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Character } from '../components/Avatar'
 import { Chevron } from '../components/Icons'
 import { levelLabel, levelOf } from '../lib/level'
@@ -9,6 +9,7 @@ import { useAuth } from '../lib/auth'
 import { usePrefs, type FontSize } from '../lib/prefs'
 import { supabase } from '../lib/supabase'
 import { shareApp } from '../lib/share'
+import { resetGuides } from '../lib/tour'
 import { useToast } from '../components/ui'
 
 const SIZES: [FontSize, string, string][] = [
@@ -21,6 +22,7 @@ export default function SettingsPage() {
   const [prefs, update] = usePrefs()
   const { session } = useAuth()
   const standalone = window.matchMedia('(display-mode: standalone)').matches
+  const nav = useNavigate()
   const toast = useToast()
   const sendApp = async () => {
     const r = await shareApp()
@@ -90,6 +92,14 @@ export default function SettingsPage() {
             카카오톡으로 앱 보내기
           </button>
           <div className="panel-desc">앱 버전 {__APP_VERSION__}</div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-title">처음 사용 안내</div>
+          <div className="panel-desc">앱을 어떻게 쓰는지 카드로 보여 주고, 첫 화면·스텝지·동기화 화면에서 버튼을 하나씩 짚어 줘요.</div>
+          <button type="button" className="btn block" onClick={() => { resetGuides(); nav('/') }}>
+            안내 다시 보기
+          </button>
         </section>
 
         <section className="panel">

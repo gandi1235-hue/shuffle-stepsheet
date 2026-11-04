@@ -4,6 +4,7 @@ import Player, { isVideoSrc, type PlayerHandle } from '../components/Player'
 import YouTubePlayer, { youtubeId } from '../components/YouTubePlayer'
 import SheetTable from '../components/SheetTable'
 import TopBar from '../components/TopBar'
+import Tour from '../components/Tour'
 import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
 import { getFolder, getSheet, planRequest, signedUrl, updateSync, videoSync, type AiSyncSrc } from '../lib/api'
 import { haptic } from '../lib/prefs'
@@ -427,6 +428,16 @@ export default function SyncPage() {
       </Modal>
 
       {!noPlayer && (
+        <Tour
+          name="sync"
+          ready={Boolean(folder)}
+          steps={[
+            { sel: '[data-tour="ai"]', title: 'AI로 맞추기', desc: '누르면 AI가 노래를 듣고(영상은 보고) 줄마다 시작 시각을 찾아요. 1~3분 뒤 자동 저장돼요.' },
+            { sel: '[data-tour="manual"]', title: '직접 고치기', desc: '틀린 줄은 재생 중 그 줄이 시작될 때 그 줄을 누르면 돼요. 더 세밀한 도구는 여기를 펼치세요.' },
+          ]}
+        />
+      )}
+      {!noPlayer && (
         <div className="sync-dock no-print">
           <div className="syncbar">
             {hasFile && ytId && (
@@ -496,7 +507,7 @@ export default function SyncPage() {
               )}
             </div>
             <div className="row">
-              <button type="button" className="btn primary ai-btn" onClick={watchVideo} disabled={Boolean(watching) || Boolean(jobId) || asking}>
+              <button type="button" className="btn primary ai-btn" onClick={watchVideo} disabled={Boolean(watching) || Boolean(jobId) || asking} data-tour="ai">
                 {watching || (jobId ? 'AI가 맞추는 중…' : '🤖 AI로 맞추기')}
               </button>
               <button type="button" className="btn" onClick={() => setAskOpen(true)} disabled={asking}>
@@ -509,7 +520,7 @@ export default function SyncPage() {
                   {saving ? '저장 중…' : '동기화 저장'}
                 </button>
               )}
-              <button type="button" className={manual ? 'btn more on' : 'btn more'} onClick={() => setManual((v) => !v)} aria-expanded={manual}>
+              <button type="button" className={manual ? 'btn more on' : 'btn more'} onClick={() => setManual((v) => !v)} aria-expanded={manual} data-tour="manual">
                 {manual ? '간단히 ▴' : '직접 고치기 ▾'}
               </button>
             </div>
