@@ -658,3 +658,7 @@ a.msg-who { display: block; }
 .editline .barline .chip.on b { color: var(--accent); }
 .editline .barline .empty { color: var(--muted); font-size: 14px; }
 .btn.on { border-color: var(--accent); background: var(--accent-soft); }
+
+/* 수정 완료 표시 */
+.final-chip { margin: 8px 14px 0; padding: 8px 12px; border-radius: 10px; background: #e8f5e9; color: #1b5e20; font-weight: 700; font-size: 14px; }
+.notice.warn { background: #fff4e5; color: #7a4b00; border: 1px solid #ffd9a0; }

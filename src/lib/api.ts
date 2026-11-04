@@ -145,7 +145,8 @@ export async function saveSheet(input: SaveInput): Promise<Stepsheet> {
   }
 
   if (input.overwriteId) {
-    const upd = await supabase.from('stepsheets').update(row).eq('id', input.overwriteId).select('*').single()
+    // 내용을 고치면 "수정 완료" 표시는 풀림 (다시 검토하고 눌러야 함)
+    const upd = await supabase.from('stepsheets').update({ ...row, finalized: false }).eq('id', input.overwriteId).select('*').single()
     if (upd.error) throw upd.error
     return upd.data as Stepsheet
   }
@@ -473,6 +474,12 @@ export async function guessArtist(title: string): Promise<string> {
 
 export async function updateSync(id: string, sync: SyncData) {
   const { error } = await supabase.from('stepsheets').update({ sync, updated_at: new Date().toISOString() }).eq('id', id)
+  if (error) throw error
+}
+
+/** 수정 완료 표시 켜고 끄기 */
+export async function setFinalized(id: string, finalized: boolean) {
+  const { error } = await supabase.from('stepsheets').update({ finalized }).eq('id', id)
   if (error) throw error
 }
 

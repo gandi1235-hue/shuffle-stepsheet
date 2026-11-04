@@ -6,7 +6,7 @@ import SheetTable from '../components/SheetTable'
 import TopBar from '../components/TopBar'
 import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
 import { Copy, Doc, Edit, LayoutSide, LayoutTop, More, Photo, Print, Share } from '../components/Icons'
-import { copySheet, getFolder, getSheet, listFolders, moveSheet, signedUrl, updateMemo, updateSync } from '../lib/api'
+import { copySheet, getFolder, getSheet, listFolders, moveSheet, setFinalized, signedUrl, updateMemo, updateSync } from '../lib/api'
 import { activeLine, eventsOf, savedBpm, withSync, type Folder, type Stepsheet } from '../lib/types'
 import { bpmFromEvents, defaultEvents } from '../lib/sync'
 import { useMedia, usePrefs } from '../lib/prefs'
@@ -69,6 +69,23 @@ export default function SheetPage() {
     )
 
   const canEdit = folder?.role === 'owner' || folder?.role === 'editor'
+  /** 수정 화면으로. 수정 완료로 표시된 스텝지면 한 번 묻는다 */
+  const goEdit = () => {
+    if (!sheet) return
+    if (sheet.finalized && !confirm('이 스텝지는 "수정 완료"로 표시돼 있어요.\n그래도 고칠까요? 고치면 수정 완료 표시가 풀려요.')) return
+    nav(`/edit/${sheet.id}`)
+  }
+  const toggleFinalized = async () => {
+    if (!sheet) return
+    const next = !sheet.finalized
+    try {
+      await setFinalized(sheet.id, next)
+      setSheet({ ...sheet, finalized: next })
+      toast(next ? '✔ 수정 완료로 표시했어요. 이제 고치려 하면 한 번 더 물어봐요' : '수정 완료 표시를 풀었어요')
+    } catch (e) {
+      toast((e as Error).message)
+    }
+  }
   const ytId = sheet.audio_url ? youtubeId(sheet.audio_url) : null
   const hasFile = Boolean(sheet.audio_path && audio)
   const playingYt = Boolean(ytId) && (!hasFile || source === 'youtube')
@@ -185,7 +202,7 @@ export default function SheetPage() {
               </button>
             )}
             {canEdit && (
-              <button type="button" className="iconbtn" aria-label="수정" onClick={() => nav(`/edit/${sheet.id}`)}>
+              <button type="button" className="iconbtn" aria-label="수정" onClick={goEdit}>
                 <Edit />
               </button>
             )}
@@ -218,6 +235,12 @@ export default function SheetPage() {
             <span className="grow"><b>다른 폴더로 옮기기</b><span>이 폴더에서는 사라지고 저쪽 폴더로 가요</span></span>
           </button>
         )}
+        {canEdit && (
+          <button type="button" className="menu-item" onClick={() => { setMenu(null); toggleFinalized() }}>
+            <span className="ico">{sheet.finalized ? '↩' : '✔'}</span>
+            <span className="grow"><b>{sheet.finalized ? '수정 완료 표시 풀기' : '수정 완료로 표시'}</b><span>{sheet.finalized ? '다시 자유롭게 고칠 수 있어요' : '검토가 끝났어요. 이후에 고치려 하면 경고해요'}</span></span>
+          </button>
+        )}
         {hasSaved && canEdit && (
           <button type="button" className="menu-item" onClick={() => { setMenu(null); clearSync() }}>
             <span className="ico">✕</span>
@@ -233,6 +256,12 @@ export default function SheetPage() {
           </button>
         ))}
       </Modal>
+
+      {sheet.finalized && (
+
+        <div className="final-chip no-print">✔ 수정 완료 · 검토가 끝난 스텝지예요</div>
+
+      )}
 
       {showPhotos ? (
         <div className="content">

@@ -79,6 +79,8 @@ export interface Stepsheet {
   created_by: string | null
   created_at: string
   updated_at: string
+  /** 수정 완료 표시: 검토가 끝난 스텝지. 다시 고치려 하면 경고하고, 고치면 표시가 풀림 */
+  finalized?: boolean
   song?: Song
 }
 

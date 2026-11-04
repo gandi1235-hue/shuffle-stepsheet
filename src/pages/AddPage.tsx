@@ -31,6 +31,7 @@ export default function AddPage() {
   const camRef = useRef<HTMLInputElement>(null)
   // ── 말로 고치기(AI가 줄 내용을 직접 바꿈) ──
   const [askOpen, setAskOpen] = useState(false)
+  const [finalWarn, setFinalWarn] = useState(false) // 수정 완료로 표시된 스텝지를 열었을 때 경고
   const [barMode, setBarMode] = useState(false) // 8박 찍기: 스텝을 누르면 그 스텝에서 한 구절이 끝난다는 도장
   const [askText, setAskText] = useState('')
   const [asking, setAsking] = useState(false)
@@ -116,6 +117,7 @@ export default function AddPage() {
     if (editId)
       getSheet(editId).then((s) => {
         if (!s) return
+        if (s.finalized) setFinalWarn(true)
         setFolderId(s.folder_id)
         setAudioUrl(s.audio_url ?? '')
         setHasAudioPath(Boolean(s.audio_path))
@@ -404,6 +406,11 @@ export default function AddPage() {
           <div className="edithead">
             <span>번호를 누르면 줄 종류가 바뀌어요 (스텝 → 구간 → 반복 → 쉬기 → 글)</span>
           </div>
+          {finalWarn && (
+            <div className="notice warn" style={{ margin: '8px 10px 0' }}>
+              ⚠️ 이 스텝지는 <b>수정 완료</b>로 표시돼 있어요. 고쳐서 저장하면 표시가 풀리니, 정말 고칠 때만 바꿔 주세요.
+            </div>
+          )}
           <div className="editrow" style={{ padding: '8px 10px 2px', gap: 8 }}>
             <button type="button" className="btn primary" style={{ flex: 1, minHeight: 44 }} onClick={() => setAskOpen(true)}>
               🎤 말로 고치기
