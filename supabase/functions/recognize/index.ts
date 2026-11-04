@@ -55,9 +55,21 @@ RM, 런닝맨, 러닝맨 → 런닝맨 / T스텝, 티스텝, T → 티스텝 / �
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string };
+    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[] };
     const geminiKey = findKey(/gemini|google/i);
     const claudeKey = findKey(/ant.?h?rop|claude/i);
+
+    // 순서 계획 모드: { order_request, lines } — 비정형 요청을 춤추는 순서(줄 번호 목록)로
+    if (body.order_request && body.lines?.length) {
+      const sys = `당신은 셔플댄스 스텝지와 실제 영상/노래의 순서를 맞춰 주는 도우미입니다. 스텝 줄 목록(번호는 1부터)과 사용자의 요청을 읽고, 영상/노래에서 춤추는 순서대로 줄 번호를 나열합니다.
+규칙: 반복이면 같은 번호를 여러 번 적습니다. 요청에 언급되지 않은 줄은 원래 순서를 유지합니다. "안 춤", "빼고"는 그 줄을 뺍니다. "N번부터 시작"은 N번 앞 줄들을 빼되, 사용자가 "맨 끝에"처럼 위치를 말하면 거기에 넣습니다. 구간 이름(후렴, 인트로 등)은 [구간] 표시로 찾습니다.
+반드시 JSON {"order": [번호, ...], "note": "바뀐 점 한 줄(한국어, 20자 내)"} 만 출력합니다.`;
+      const ask = `[스텝 줄 목록]\n${body.lines.map((l) => String(l)).join("\n")}\n\n[요청]\n${String(body.order_request).trim()}`;
+      const t = geminiKey ? await viaGemini([], geminiKey, ask, sys) : claudeKey ? await viaClaude([], claudeKey, ask, sys) : "";
+      const s0 = t.indexOf("{"); const e0 = t.lastIndexOf("}");
+      const j = s0 >= 0 ? JSON.parse(t.slice(s0, e0 + 1)) : {};
+      return new Response(JSON.stringify({ order: j.order ?? [], note: j.note ?? "" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     // 가수 추정 모드: { title } 만 오면 노래 제목으로 가수를 알려 줌
     if (body.title && !body.images?.length) {
@@ -101,7 +113,7 @@ function findKey(pattern: RegExp): string | undefined {
 }
 const ASK = "이 스텝지를 위 양식의 JSON으로 정리해 주세요.";
 
-async function viaGemini(images: Img[], key: string, ask = ASK): Promise<string> {
+async function viaGemini(images: Img[], key: string, ask = ASK, sys = SYSTEM): Promise<string> {
   const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -109,7 +121,7 @@ async function viaGemini(images: Img[], key: string, ask = ASK): Promise<string>
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM }] },
+        systemInstruction: { parts: [{ text: sys }] },
         contents: [{
           role: "user",
           parts: [...images.map((i) => ({ inline_data: { mime_type: i.media_type, data: i.data } })), { text: ask }],
@@ -123,7 +135,7 @@ async function viaGemini(images: Img[], key: string, ask = ASK): Promise<string>
   return (j.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? "").join("");
 }
 
-async function viaClaude(images: Img[], key: string, ask = ASK): Promise<string> {
+async function viaClaude(images: Img[], key: string, ask = ASK, sys = SYSTEM): Promise<string> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -134,7 +146,7 @@ async function viaClaude(images: Img[], key: string, ask = ASK): Promise<string>
     body: JSON.stringify({
       model: Deno.env.get("CLAUDE_MODEL") ?? "claude-sonnet-5-5",
       max_tokens: 8000,
-      system: SYSTEM,
+      system: sys,
       messages: [{
         role: "user",
         content: [

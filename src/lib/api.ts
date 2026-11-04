@@ -345,3 +345,13 @@ export async function moveSheet(id: string, targetFolderId: string): Promise<Ste
   if (src.photo_paths?.length) await supabase.storage.from('photos').remove(src.photo_paths)
   return saved
 }
+
+/** 비정형 요청("2번부터 시작, 1번은 맨 끝에 한 번")을 춤추는 순서(1부터 세는 스텝 줄 번호 목록)로 */
+export async function planOrder(lines: string[], request: string): Promise<{ order: number[]; note: string }> {
+  const { data, error } = await supabase.functions.invoke('recognize', { body: { order_request: request, lines } })
+  if (error) throw new Error('요청을 이해하지 못했어요. 다시 적어 주세요.')
+  if (data?.error) throw new Error(data.error)
+  const order = (data?.order ?? []).map((n: unknown) => Number(n)).filter((n: number) => Number.isInteger(n) && n >= 1 && n <= lines.length)
+  if (!order.length) throw new Error('요청을 이해하지 못했어요. 다시 적어 주세요.')
+  return { order, note: String(data?.note ?? '') }
+}

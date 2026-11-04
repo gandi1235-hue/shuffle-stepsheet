@@ -5,7 +5,7 @@ import { useToast } from '../components/ui'
 import { haptic } from '../lib/prefs'
 import { Camera, Photo } from '../components/Icons'
 import { deleteSheet, findDuplicate, getSheet, guessArtist, listFolders, recognize, saveSheet } from '../lib/api'
-import { LINE_KINDS, NOTE_TYPES, emptyLine, emptyRecognized, hasMarks, kindOf, lineToText, parseLineText, syncOf, type Folder, type Line, type LineKind, type NoteType, type Recognized } from '../lib/types'
+import { LINE_KINDS, NOTE_TYPES, emptyLine, emptyRecognized, eventsOf, kindOf, lineToText, parseLineText, type Folder, type Line, type LineKind, type NoteType, type Recognized } from '../lib/types'
 
 type Stage = 'photo' | 'recognizing' | 'edit' | 'saving'
 
@@ -44,7 +44,7 @@ export default function AddPage() {
         setFolderId(s.folder_id)
         setAudioUrl(s.audio_url ?? '')
         setHasAudioPath(Boolean(s.audio_path))
-        setHasSync(hasMarks(syncOf(s.sync, 'file')) || hasMarks(syncOf(s.sync, 'yt')))
+        setHasSync(eventsOf(s.sync, 'file').length > 0 || eventsOf(s.sync, 'yt').length > 0)
         setData({
           title: s.song?.title ?? '',
           artist: s.song?.artist ?? '',

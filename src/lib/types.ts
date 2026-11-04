@@ -162,19 +162,45 @@ export function stepNames(lines: Line[]): string[] {
 
 // ── 노래 동기화 저장 모양 ──
 export type Marks = (number | null)[]
+/** 줄 시작 사건: t초에 line번째(lines 인덱스) 줄이 시작. 같은 줄이 여러 번 나와도 됨(반복·순서 바뀜) */
+export type SyncEvent = { t: number; line: number }
+export type SyncTrack = Marks | SyncEvent[]
 export type SyncSource = 'file' | 'yt'
-export type SyncData = Marks | { file?: Marks | null; yt?: Marks | null } | null
-export const hasMarks = (m: Marks | null | undefined) => Boolean(m?.some((v) => typeof v === 'number'))
-/** 음원용/유튜브용 줄별 시각 꺼내기 (옛 배열 데이터는 음원용으로 봄) */
-export function syncOf(sync: SyncData | undefined, src: SyncSource): Marks {
+export type SyncData = Marks | { file?: SyncTrack | null; yt?: SyncTrack | null } | null
+
+const isEvents = (v: SyncTrack | null | undefined): v is SyncEvent[] => Array.isArray(v) && v.length > 0 && typeof v[0] === 'object' && v[0] !== null
+/** 어떤 저장 모양이든 사건 목록(시간순)으로 */
+export function toEvents(v: SyncTrack | null | undefined): SyncEvent[] {
+  if (!v) return []
+  if (isEvents(v)) return [...v].sort((a, b) => a.t - b.t)
+  const out: SyncEvent[] = []
+  ;(v as Marks).forEach((t, line) => {
+    if (typeof t === 'number') out.push({ t, line })
+  })
+  return out.sort((a, b) => a.t - b.t)
+}
+/** 음원용/유튜브용 사건 꺼내기 (옛 배열 데이터는 음원용으로 봄) */
+export function eventsOf(sync: SyncData | undefined, src: SyncSource): SyncEvent[] {
   if (!sync) return []
-  if (Array.isArray(sync)) return src === 'file' ? sync : []
-  return sync[src] ?? []
+  if (Array.isArray(sync)) return src === 'file' ? toEvents(sync as Marks) : []
+  return toEvents(sync[src])
 }
 /** 한쪽만 바꿔 넣은 새 값 (둘 다 비면 null) */
-export function withSync(sync: SyncData | undefined, src: SyncSource, marks: Marks | null): SyncData {
-  const base: { file?: Marks | null; yt?: Marks | null } = !sync ? {} : Array.isArray(sync) ? { file: sync } : { ...sync }
-  base[src] = marks
-  if (!hasMarks(base.file) && !hasMarks(base.yt)) return null
+export function withSync(sync: SyncData | undefined, src: SyncSource, events: SyncEvent[] | null): SyncData {
+  const base: { file?: SyncTrack | null; yt?: SyncTrack | null } = !sync ? {} : Array.isArray(sync) ? { file: sync as Marks } : { ...sync }
+  base[src] = events && events.length ? events : null
+  if (!toEvents(base.file).length && !toEvents(base.yt).length) return null
   return base
+}
+/** 표에 보여 줄 줄별 첫 시각 */
+export function marksFromEvents(events: SyncEvent[], nLines: number): Marks {
+  const m: Marks = Array.from({ length: nLines }, () => null)
+  for (const e of events) if (m[e.line] === null) m[e.line] = e.t
+  return m
+}
+/** 지금 시각에 재생 중인 줄 */
+export function activeLine(events: SyncEvent[], t: number): number | undefined {
+  let best: number | undefined
+  for (const e of events) if (e.t <= t + 0.05) best = e.line
+  return best
 }

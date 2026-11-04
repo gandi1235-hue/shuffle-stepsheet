@@ -7,8 +7,8 @@ import TopBar from '../components/TopBar'
 import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
 import { Copy, Doc, Edit, More, Photo, Print, Share } from '../components/Icons'
 import { copySheet, getFolder, getSheet, listFolders, moveSheet, signedUrl, updateMemo, updateSync } from '../lib/api'
-import { hasMarks, syncOf, withSync, type Folder, type Stepsheet } from '../lib/types'
-import { bpmFromMarks, defaultMarks } from '../lib/sync'
+import { activeLine, eventsOf, withSync, type Folder, type Stepsheet } from '../lib/types'
+import { bpmFromEvents, defaultEvents } from '../lib/sync'
 
 export default function SheetPage() {
   const { id = '' } = useParams()
@@ -72,22 +72,17 @@ export default function SheetPage() {
   const fileIsVideo = Boolean(sheet.audio_path && isVideoSrc(sheet.audio_path))
 
   // 노래 동기화(저장된 줄별 시각): 재생 중인 줄 표시, 줄을 누르면 그 자리로 이동
-  const savedMarks = syncOf(sheet.sync, playingYt ? 'yt' : 'file')
-  const hasSaved = hasMarks(savedMarks)
+  const savedEvents = eventsOf(sheet.sync, playingYt ? 'yt' : 'file')
+  const hasSaved = savedEvents.length > 0
   // 유튜브는 저장된 게 없어도 "영상 시작과 동시에 1번 줄"을 기본으로 보여 줌
-  const marks = hasSaved ? savedMarks : playingYt ? defaultMarks(sheet, bpmFromMarks(sheet, syncOf(sheet.sync, 'file'))) : savedMarks
-  const hasSync = hasMarks(marks)
-  const activeIndex = (() => {
-    if (!hasPlayer || !hasSync) return undefined
-    let best: number | undefined
-    marks.forEach((v, i) => {
-      if (typeof v === 'number' && v <= t + 0.05) best = i
-    })
-    return best
-  })()
+  const events = hasSaved ? savedEvents : playingYt ? defaultEvents(sheet, bpmFromEvents(sheet, eventsOf(sheet.sync, 'file'))) : []
+  const hasSync = events.length > 0
+  const activeIndex = hasPlayer && hasSync ? activeLine(events, t) : undefined
   const onLine = (i: number) => {
-    const v = marks[i]
-    if (typeof v === 'number') player.current?.seek(v, true)
+    // 그 줄이 나오는 시각 중 지금 이후 가장 가까운 것, 없으면 처음 것
+    const mine = events.filter((e) => e.line === i)
+    const next = mine.find((e) => e.t > t + 0.5) ?? mine[0]
+    if (next) player.current?.seek(next.t, true)
   }
   const clearSync = async () => {
     if (!confirm(`${playingYt ? '유튜브' : '음원'}용 동기화를 지울까요?`)) return
