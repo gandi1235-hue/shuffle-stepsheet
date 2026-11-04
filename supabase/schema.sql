@@ -66,7 +66,7 @@ language plpgsql security definer set search_path = public as $$
 declare f uuid;
 begin
   insert into profiles (id, display_name)
-    values (new.id, coalesce(new.raw_user_meta_data->>'name', new.raw_user_meta_data->>'full_name', split_part(coalesce(new.email, '회원'), '@', 1)));
+    values (new.id, coalesce(nullif(new.raw_user_meta_data->>'name', ''), nullif(new.raw_user_meta_data->>'full_name', ''), nullif(new.raw_user_meta_data->>'preferred_username', ''), nullif(new.raw_user_meta_data->>'nickname', ''), nullif(new.raw_user_meta_data->>'user_name', ''), split_part(coalesce(new.email, '회원'), '@', 1)));
   insert into folders (name, kind, owner_id) values ('내 스텝지', 'personal', new.id) returning id into f;
   insert into folder_members (folder_id, user_id, role) values (f, new.id, 'owner');
   return new;
