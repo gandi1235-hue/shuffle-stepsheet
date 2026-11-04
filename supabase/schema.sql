@@ -212,3 +212,6 @@ create index if not exists ai_jobs_owner_idx on ai_jobs (created_by, created_at 
 alter table ai_jobs enable row level security;
 drop policy if exists "ai_jobs: 본인 읽기" on ai_jobs;
 create policy "ai_jobs: 본인 읽기" on ai_jobs for select using (created_by = auth.uid());
+
+-- 수정 완료 표시 (검토가 끝난 스텝지. 고치려 하면 앱이 경고하고, 고치면 다시 false)
+alter table stepsheets add column if not exists finalized boolean not null default false;
