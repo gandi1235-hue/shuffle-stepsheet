@@ -70,6 +70,8 @@ export default function SheetPage() {
   const hasPlayer = hasFile || Boolean(ytId)
   const isExternal = !hasFile && Boolean(sheet.audio_url) && !ytId
   const fileIsVideo = Boolean(sheet.audio_path && isVideoSrc(sheet.audio_path))
+  // 영상(유튜브·mp4)과 같이 볼 때는 화면을 나눠 쓴다: 줄은 읽기 좋은 크기로 스크롤, 지금 줄을 따라감
+  const withVideo = playingYt || (hasFile && fileIsVideo)
 
   // 노래 동기화(저장된 줄별 시각): 재생 중인 줄 표시, 줄을 누르면 그 자리로 이동
   const savedEvents = eventsOf(sheet.sync, playingYt ? 'yt' : 'file')
@@ -159,7 +161,7 @@ export default function SheetPage() {
   )
 
   return (
-    <div className="screen sheet-screen">
+    <div className={withVideo ? 'screen sheet-screen with-video' : 'screen sheet-screen'}>
       <TopBar
         title={sheet.song?.title ?? ''}
         sub={`${sheet.creator_name}${folder ? ` · ${folder.name}` : ''}`}
@@ -232,6 +234,10 @@ export default function SheetPage() {
           <h2 className="print-title">셔플댄스 스텝지</h2>
           <SheetTable title={sheet.song?.title ?? ''} artist={sheet.song?.artist ?? ''} creator={sheet.creator_name} creatorInfo={sheet.creator_info} lines={sheet.lines} memo={sheet.memo} />
         </DocView>
+      ) : withVideo ? (
+        <FollowBox activeIndex={activeIndex}>
+          <SheetTable title={sheet.song?.title ?? ''} artist={sheet.song?.artist ?? ''} creator={sheet.creator_name} creatorInfo={sheet.creator_info} lines={sheet.lines} memo={sheet.memo} noHead onMemo={canEdit ? editMemo : undefined} activeIndex={activeIndex} onLine={hasSync ? onLine : undefined} />
+        </FollowBox>
       ) : (
         <FitBox big={big} setBig={setBig}>
           <h2 className="print-title">셔플댄스 스텝지</h2>
@@ -248,6 +254,34 @@ export default function SheetPage() {
           </a>
         </div>
       )}
+    </div>
+  )
+}
+
+/** 영상과 같이 볼 때: 줄을 원래 크기로 스크롤해서 보여 주고, 지금 줄이 바뀌면 가운데로 따라간다.
+ *  사용자가 손으로 넘기는 중(4초)에는 따라가지 않는다 */
+function FollowBox({ children, activeIndex }: { children: React.ReactNode; activeIndex?: number }) {
+  const box = useRef<HTMLDivElement>(null)
+  const userUntil = useRef(0)
+  useEffect(() => {
+    const el = box.current
+    if (!el) return
+    const touch = () => (userUntil.current = Date.now() + 4000)
+    el.addEventListener('touchstart', touch, { passive: true })
+    el.addEventListener('wheel', touch, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', touch)
+      el.removeEventListener('wheel', touch)
+    }
+  }, [])
+  useEffect(() => {
+    if (activeIndex === undefined || Date.now() < userUntil.current) return
+    const now = box.current?.querySelector('.line.now') as HTMLElement | null
+    now?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [activeIndex])
+  return (
+    <div className="content follow" ref={box}>
+      {children}
     </div>
   )
 }

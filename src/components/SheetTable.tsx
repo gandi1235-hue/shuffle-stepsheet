@@ -16,6 +16,8 @@ interface Props {
   onLine?: (index: number) => void
   /** 줄별 시작 시각(초) 표시 */
   marks?: (number | null)[]
+  /** 머리말(제목·창작자 표) 없이 줄만 (영상과 같이 볼 때) */
+  noHead?: boolean
 }
 
 const mmss = (t: number) => `${Math.floor(t / 60)}:${Math.floor(t % 60).toString().padStart(2, '0')}`
@@ -23,7 +25,7 @@ const mmss = (t: number) => `${Math.floor(t / 60)}:${Math.floor(t % 60).toString
 const NOTE_PREFIX: Partial<Record<NonNullable<Note['type']>, string>> = { hand_motion: '손동작', caution: '주의' }
 
 /** 셔플박스 표준 양식: 머리말 + 번호 줄(스텝명 박수 / …) + 파란 해설. 검정·파랑·회색만 씀. 화면·문서·인쇄 공용 */
-export default function SheetTable({ title, artist, creator, creatorInfo, lines, memo, big, onMemo, activeIndex, onLine, marks }: Props) {
+export default function SheetTable({ title, artist, creator, creatorInfo, lines, memo, big, onMemo, activeIndex, onLine, marks, noHead }: Props) {
   const st = sheetStats(lines)
   let n = 0
   const rows = lines
@@ -31,6 +33,7 @@ export default function SheetTable({ title, artist, creator, creatorInfo, lines,
     .filter(({ l, kind }) => (kind === 'steps' ? l.steps.some((s) => s.name.trim()) || l.notes?.length : (l.label ?? '').trim() || l.notes?.length))
   return (
     <div className={big ? 'form big' : 'form'}>
+      {!noHead && (
       <div className="form-head">
         <div className="k">제목</div>
         <div className="v">
@@ -43,6 +46,7 @@ export default function SheetTable({ title, artist, creator, creatorInfo, lines,
           {creatorInfo && <span className="sub">{creatorInfo}</span>}
         </div>
       </div>
+      )}
 
       <ol className="form-body">
         {rows.map(({ l, kind, index }, i) => {

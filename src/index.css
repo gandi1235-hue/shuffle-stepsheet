@@ -140,9 +140,12 @@ button.card { width: 100%; font: inherit; text-align: left; cursor: pointer; }
 .player .speed span { flex: 1; text-align: center; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .player.has-video { padding-top: 0; overflow: hidden; }
 .player .screen-video { width: calc(100% + 28px); margin: 0 -14px 4px; max-height: 38vh; background: #000; display: block; object-fit: contain; }
-.player .yt-box { margin: 0 -14px 4px; background: #000; aspect-ratio: 16 / 9; max-height: 38vh; }
+.player .yt-box { margin: 0 -14px 4px; background: #000; aspect-ratio: 16 / 9; max-height: 34vh; }
 .player .yt-box iframe { width: 100%; height: 100%; display: block; }
-.player.yt .play { font-size: 16px; color: #fff; }
+.player.yt .tools { align-items: center; flex-wrap: wrap; }
+.player.yt .tools > .btn { flex: 0 0 auto; padding: 0 12px; }
+.player.yt .yt-time { flex: 1; font-size: 13px; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: center; }
+.player.yt .tools .srcseg { flex: 0 0 auto; }
 .syncbar .bpm { flex: 1; min-width: 150px; display: flex; align-items: center; gap: 4px; }
 .syncbar .bpm .btn { flex: 0 0 44px; padding: 0; font-size: 20px; }
 .syncbar .bpm span { flex: 1; text-align: center; font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; display: flex; flex-direction: column; line-height: 1; }
@@ -330,6 +333,20 @@ button.card { width: 100%; font: inherit; text-align: left; cursor: pointer; }
 /* ── 스텝지 화면: 한 화면에 맞춤 ── */
 .sheet-screen { height: var(--app-h, 100dvh); min-height: 0; flex: none; overflow: hidden; }
 .sheet-screen .content { overflow-y: auto; }
+/* 영상과 같이 볼 때: 줄만 원래 크기로, 스크롤 + 지금 줄 따라가기. 끝 줄도 가운데 올 수 있게 아래 여백 */
+.content.follow { padding: 10px 12px 40vh; gap: 10px; }
+.content.follow .form-body .main { font-size: 18px; }
+.content.follow .form-body .line.now { background: #fff3c4; }
+@media (min-width: 900px) {
+  /* 넓은 화면: 영상은 왼쪽에 크게, 스텝은 오른쪽에 전체 높이로 */
+  body:has(.sheet-screen.with-video) .app { max-width: 1280px; }
+  .sheet-screen.with-video { display: grid; grid-template-columns: minmax(380px, 11fr) minmax(0, 9fr); grid-template-rows: auto minmax(0, 1fr); column-gap: 12px; }
+  .sheet-screen.with-video > .topbar { grid-column: 1 / -1; grid-row: 1; }
+  .sheet-screen.with-video > .player { grid-column: 1; grid-row: 2; align-self: start; position: static; margin: 12px 0 12px 12px; border-radius: 20px; border-bottom: 1px solid var(--line); box-shadow: var(--shadow); padding-bottom: 14px; }
+  .sheet-screen.with-video > .content, .sheet-screen.with-video > .docview { grid-column: 2; grid-row: 2; min-height: 0; }
+  .sheet-screen.with-video .player .yt-box, .sheet-screen.with-video .player .screen-video { max-height: 72vh; }
+  .sheet-screen.with-video .content.follow { padding-right: 16px; }
+}
 .fit { flex: 1; min-height: 0; padding: 12px 14px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .fit-wrap { width: 100%; position: relative; }
 .fit-inner { transform-origin: top center; margin: 0 auto; }

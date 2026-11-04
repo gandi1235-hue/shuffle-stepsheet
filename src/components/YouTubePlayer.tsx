@@ -62,7 +62,6 @@ export default function YouTubePlayer({ videoId, name, onTime, handle, extra }: 
   const box = useRef<HTMLDivElement>(null)
   const yt = useRef<YTPlayer | null>(null)
   const [ready, setReady] = useState(false)
-  const [playing, setPlaying] = useState(false)
   const [t, setT] = useState(0)
   const [d, setD] = useState(0)
   const [speed, setSpeed] = useState(1)
@@ -85,7 +84,6 @@ export default function YouTubePlayer({ videoId, name, onTime, handle, extra }: 
             setReady(true)
             setD(yt.current?.getDuration() ?? 0)
           },
-          onStateChange: (e: { data: number }) => setPlaying(e.data === YT.PlayerState.PLAYING),
         },
       })
       timer = window.setInterval(() => {
@@ -122,7 +120,6 @@ export default function YouTubePlayer({ videoId, name, onTime, handle, extra }: 
     }
   }, [handle])
 
-  const toggle = () => (playing ? yt.current?.pauseVideo() : yt.current?.playVideo())
   const cycleSpeed = () => {
     const s = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]
     setSpeed(s)
@@ -131,27 +128,17 @@ export default function YouTubePlayer({ videoId, name, onTime, handle, extra }: 
 
   return (
     <div className="player has-video yt">
-      <div className="yt-box" ref={box} />
-      <div className="main">
-        <button type="button" className="play" aria-label={playing ? '일시정지' : '재생'} onClick={toggle} disabled={!ready}>
-          {playing ? '❚❚' : '▶'}
-        </button>
-        <div className="info">
-          <div className="meta">
-            <b>{name}</b>
-            <span>
-              {fmt(t)} / {fmt(d)}
-            </span>
-          </div>
-          <input type="range" aria-label="재생 위치" min={0} max={d || 0} step={0.5} value={t} onChange={(e) => yt.current?.seekTo(Number(e.target.value), true)} />
-        </div>
-      </div>
+      <div className="yt-box" ref={box} title={name} />
+      {/* 재생·탐색은 유튜브 자체 조작으로. 여기엔 속도와 부가 버튼만 한 줄로 */}
       <div className="tools">
-        <button type="button" className="btn" onClick={cycleSpeed}>
+        <button type="button" className="btn" onClick={cycleSpeed} disabled={!ready}>
           속도 {speed}×
         </button>
+        <span className="yt-time" aria-live="off">
+          {fmt(t)} / {fmt(d)}
+        </span>
+        {extra}
       </div>
-      {extra && <div className="tools extra">{extra}</div>}
     </div>
   )
 }
