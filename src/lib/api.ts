@@ -249,3 +249,8 @@ export async function removeMember(folderId: string, userId: string) {
   const { error } = await supabase.from('folder_members').delete().eq('folder_id', folderId).eq('user_id', userId)
   if (error) throw error
 }
+
+export async function transferOwner(folderId: string, userId: string) {
+  const { error } = await supabase.rpc('transfer_folder_owner', { fid: folderId, new_owner: userId })
+  if (error) throw error
+}

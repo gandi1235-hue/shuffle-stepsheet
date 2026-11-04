@@ -144,3 +144,15 @@ create policy "storage: 편집자 올리기" on storage.objects for insert
   with check (bucket_id in ('audio', 'photos') and can_edit((storage.foldername(name))[1]::uuid));
 create policy "storage: 편집자 삭제" on storage.objects for delete
   using (bucket_id in ('audio', 'photos') and can_edit((storage.foldername(name))[1]::uuid));
+
+-- 폴더 주인 넘기기 (주인만 가능, 멤버에게만)
+create or replace function transfer_folder_owner(fid uuid, new_owner uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if my_role(fid) is distinct from 'owner' then raise exception '폴더 주인만 넘길 수 있어요'; end if;
+  if not exists (select 1 from folder_members where folder_id = fid and user_id = new_owner) then raise exception '폴더 멤버가 아니에요'; end if;
+  if new_owner = auth.uid() then return; end if;
+  update folder_members set role = 'editor' where folder_id = fid and user_id = auth.uid();
+  update folder_members set role = 'owner' where folder_id = fid and user_id = new_owner;
+  update folders set owner_id = new_owner where id = fid;
+end $$;

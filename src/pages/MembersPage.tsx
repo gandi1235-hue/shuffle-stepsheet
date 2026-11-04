@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import TopBar from '../components/TopBar'
 import { useToast } from '../components/ui'
-import { getFolder, listMembers, removeMember, setMemberRole, type Member } from '../lib/api'
+import { getFolder, listMembers, removeMember, setMemberRole, transferOwner, type Member } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import type { Folder, Role } from '../lib/types'
 
@@ -41,6 +41,18 @@ export default function MembersPage() {
     }
   }
 
+  const handOver = async (m: Member) => {
+    if (!confirm(`${m.display_name} 님을 이 폴더의 주인으로 바꿀까요?\n나는 편집자가 되고, 멤버 초대·내보내기는 새 주인만 할 수 있어요.`)) return
+    try {
+      await transferOwner(id, m.user_id)
+      toast(`${m.display_name} 님이 주인이 됐어요`)
+      getFolder(id).then(setFolder)
+      load()
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
   const kick = async (m: Member) => {
     if (!confirm(`${m.display_name} 님을 폴더에서 내보낼까요?`)) return
     await removeMember(id, m.user_id)
@@ -57,7 +69,7 @@ export default function MembersPage() {
               카카오톡으로 초대하기
             </button>
             <div className="notice">
-              초대 코드 <b>{folder?.invite_code}</b> · 새로 들어온 사람은 "보기" 권한으로 시작해요. 아래에서 편집자로 바꿀 수 있어요.
+              초대 코드 <b>{folder?.invite_code}</b> · 새로 들어온 사람은 "보기" 권한으로 시작해요. 아래에서 편집자로 바꾸거나, 폴더 주인을 다른 분께 넘길 수 있어요.
             </div>
           </>
         )}
@@ -75,6 +87,9 @@ export default function MembersPage() {
                     <option value="editor">편집자</option>
                     <option value="viewer">보기만</option>
                   </select>
+                  <button type="button" className="btn" style={{ minHeight: 40 }} onClick={() => handOver(m)}>
+                    주인으로
+                  </button>
                   <button type="button" className="btn danger" style={{ minHeight: 40 }} onClick={() => kick(m)}>
                     내보내기
                   </button>
