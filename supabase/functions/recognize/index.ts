@@ -55,6 +55,15 @@ RM, 런닝맨, 러닝맨 → 런닝맨 / T스텝, 티스텝, T → 티스텝 / �
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
+    // 로그인한 사람만: 앱이 보낸 사용자 토큰을 Auth 서버에 확인한다 (공개 키만으로는 못 씀)
+    const auth = req.headers.get("Authorization") ?? "";
+    const apikey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
+    const who = auth.startsWith("Bearer ")
+      ? await fetch(`${Deno.env.get("SUPABASE_URL")}/auth/v1/user`, { headers: { apikey, Authorization: auth } }).then((r) => r.ok).catch(() => false)
+      : false;
+    if (!who) {
+      return new Response(JSON.stringify({ error: "로그인이 필요해요" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[] };
     const geminiKey = findKey(/gemini|google/i);
     const claudeKey = findKey(/ant.?h?rop|claude/i);
