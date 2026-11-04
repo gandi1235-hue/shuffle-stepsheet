@@ -97,9 +97,6 @@ export default function SyncPage() {
     })
     return best
   })()
-  useEffect(() => {
-    document.querySelector('.sync-content .form-body .line.now')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [activeIndex])
 
   if (err) return <div className="error">{err}</div>
   if (!sheet)
@@ -150,23 +147,17 @@ export default function SyncPage() {
     if (typeof t0 === 'number') push(fill(sheet, marks, 0, t0, rate))
     touched.current = true
   }
-  /** 교정: 이 줄이 지금 시작 → 이 줄 시각을 바꾸고 뒤 줄들은 같은 만큼 밀기 */
+  /** 교정: 줄을 누른 그 순간이 그 줄의 시작이 됨 (그 줄만 바뀜) */
   const fixLine = (i: number) => {
     const k = stepIdx.indexOf(i)
     if (k < 0) return
-    const tn = r1(snapToBeat(now(), beatsOk ? tempo : null))
-    const old = marks[i]
-    const delta = typeof old === 'number' ? tn - old : 0
+    const tn = r1(now())
     const m = [...marks]
-    for (let j = k; j < stepIdx.length; j++) {
-      const v = m[stepIdx[j]]
-      m[stepIdx[j]] = typeof v === 'number' ? r1(v + delta) : null
-    }
-    if (typeof old !== 'number') m[i] = tn
+    m[i] = tn
     push(m)
     touched.current = true
     haptic(10)
-    toast(`${k + 1}번 줄을 ${fmtT(tn)}에 맞췄어요`)
+    toast(`${k + 1}번 줄 시작 → ${fmtT(tn)}`)
   }
   const undo = () => {
     const prev = history[history.length - 1]
@@ -236,7 +227,7 @@ export default function SyncPage() {
                 </>
               ) : (
                 <>
-                  들으면서 줄이 켜지는 타이밍이 틀리면, <b>그 줄이 시작되는 순간 줄을 누르세요.</b> 그 줄부터 뒤가 같이 밀려요. 다 맞으면 저장.
+                  틀린 줄이 있으면 <b>그 줄이 시작되는 순간 그 줄을 누르세요.</b> 그 순간이 그 줄의 시작이 돼요(그 줄만 바뀜). 다 맞으면 저장.
                 </>
               )}
             </div>
