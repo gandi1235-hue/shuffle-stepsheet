@@ -236,6 +236,11 @@ export default function SyncPage() {
   const applyRequest = async () => {
     const q = request.trim()
     if (!q) return
+    // 영상·음원이 있으면 AI가 영상을 처음부터 끝까지 보면서 요청을 같이 반영 (글만으로 못 알아듣는 "영상 보고 맞춰" 같은 요청도 됨)
+    if ((playingYt && ytId) || (hasFile && audio)) {
+      await watchVideo(q)
+      return
+    }
     setAsking(true)
     try {
       const r = await planRequest(orderPromptLines(sheet), q)
@@ -267,7 +272,7 @@ export default function SyncPage() {
    * 영상 보고 맞추기(고도 추론): 영상의 장면들을 시각을 적은 장면표로 만들고, AI가 그걸 보고 줄마다 시작 시각을 찾는다.
    * 유튜브면 서버가 유튜브 미리보기 장면(스토리보드)을 가져오고, 올려 둔 영상 파일이면 1초마다 프레임을 뽑는다.
    */
-  const watchVideo = async () => {
+  const watchVideo = async (req = '') => {
     if (watching) return
     try {
       let src: AiSyncSrc
@@ -296,14 +301,14 @@ export default function SyncPage() {
         setWatching('AI에게 음악을 들려주는 중…')
         src = { audio: { media_type: mime, data: b64 } }
       } else throw new Error('음원 파일이나 유튜브 링크가 있어야 AI가 맞출 수 있어요')
-      const r = await videoSync(sheet.id, src, orderPromptLines(sheet), bpm)
+      const r = await videoSync(sheet.id, src, orderPromptLines(sheet), bpm, req)
       if ('jobId' in r) {
         // 서버에서 이어서 돎: 화면을 떠나거나 앱을 꺼도 끝나면 저장되고 알려 줌
         addJob({ id: r.jobId, sheetId: sheet.id, kind: 'video_sync', src: playingYt ? 'yt' : 'file', bpm, title: sheet.song?.title ?? '스텝지', started: Date.now() })
         setJobId(r.jobId)
         setWatching('')
         setAskOpen(false)
-        toast(`AI가 ${playingYt || fileIsVideo ? '영상을 보고' : '음악을 듣고'} 있어요 (1~3분). 다른 화면에 가 있어도 끝나면 저장되고 알려 드려요`)
+        toast(`AI가 ${req ? '요청을 읽고 ' : ''}${playingYt || fileIsVideo ? '영상을 보고' : '음악을 듣고'} 있어요 (1~3분). 다른 화면에 가 있어도 끝나면 저장되고 알려 드려요`)
         return
       }
       const out = planFromReply(sheet, r, bpm, events[0]?.t ?? 0)
@@ -404,7 +409,7 @@ export default function SyncPage() {
       </div>
 
       <Modal open={askOpen} title="직접 요청" onClose={() => { stopListen(); setAskOpen(false) }}>
-        <div className="panel-desc">말로 하거나 글로 적어 주세요. 순서, 반복, 쉬는 박, 줄 길이, 시작 시각, 박자 다 돼요. 예: "1번 하고 4박 더 쉬고 2번" / "후렴을 두 번" / "3번은 16박으로 길게" / "2번은 35초에" / "박자 128"</div>
+        <div className="panel-desc">말로 하거나 글로 적어 주세요. 유튜브·음원이 있으면 AI가 영상을 처음부터 끝까지 보면서 요청을 반영해요 (1~3분). 순서, 반복, 쉬는 박, 줄 길이, 시작 시각, 박자 다 돼요. 예: "1번이 두 번 반복돼" / "중간에 쉬는 데 있으니 영상 보고 꼼꼼히 맞춰 줘" / "2번은 35초에" / "박자 128"</div>
         <textarea className="ask" rows={3} value={request} onChange={(e) => setRequest(e.target.value)} placeholder="예: 1번 하고 4박 더 쉬고 2번" />
         {speechOk && (
           <button type="button" className={listening ? 'btn mic on' : 'btn mic'} onClick={listening ? stopListen : startListen} disabled={asking || hearing}>
@@ -508,7 +513,7 @@ export default function SyncPage() {
               )}
             </div>
             <div className="row">
-              <button type="button" className="btn primary ai-btn" onClick={watchVideo} disabled={Boolean(watching) || Boolean(jobId) || asking} data-tour="ai">
+              <button type="button" className="btn primary ai-btn" onClick={() => watchVideo()} disabled={Boolean(watching) || Boolean(jobId) || asking} data-tour="ai">
                 {watching || (jobId ? 'AI가 맞추는 중…' : '🤖 AI로 맞추기')}
               </button>
               <button type="button" className="btn" onClick={() => setAskOpen(true)} disabled={asking}>

@@ -636,8 +636,10 @@ export async function planRequest(lines: string[], request: string): Promise<Pla
  * 영상은 올리지 않고 장면표 그림만 보낸다. 1~3분 걸릴 수 있다.
  */
 export type AiSyncSrc = { sheets: { media_type: string; data: string }[]; step: number; duration: number } | { ytUrl: string } | { audio: { media_type: string; data: string } }
-export async function videoSync(sheetId: string, src: AiSyncSrc, lines: string[], bpm: number): Promise<{ jobId: string } | PlanReply> {
-  const video_sync = 'ytUrl' in src ? { yt_url: src.ytUrl, bpm } : 'audio' in src ? { audio: src.audio, bpm } : { frames: src.sheets, step: src.step, duration: src.duration, bpm }
+export async function videoSync(sheetId: string, src: AiSyncSrc, lines: string[], bpm: number, request = ''): Promise<{ jobId: string } | PlanReply> {
+  // request: 사용자가 말로 한 요청. AI가 영상/음악을 보면서 같이 반영
+  const base = 'ytUrl' in src ? { yt_url: src.ytUrl, bpm } : 'audio' in src ? { audio: src.audio, bpm } : { frames: src.sheets, step: src.step, duration: src.duration, bpm }
+  const video_sync = request.trim() ? { ...base, request: request.trim() } : base
   const { data, error } = await supabase.functions.invoke('recognize', { body: { video_sync, lines, deep: deepAi(), async: true, sheet_id: sheetId } })
   if (error) throw new Error('AI가 영상·음악을 읽지 못했어요. 파일이 크면 시간이 모자랄 수 있어요. 한 번 더 해 보세요.')
   if (data?.error) throw new Error(data.error)

@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
     if (!who?.id) {
       return new Response(JSON.stringify({ error: "로그인이 필요해요" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string; tier?: number }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string }; video_sync?: { frames?: { media_type: string; data: string }[]; yt_url?: string; audio?: { media_type: string; data: string }; step?: number; duration?: number; bpm?: number }; yt_frames?: string; deep?: boolean; async?: boolean; sheet_id?: string };
+    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string; tier?: number }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string }; video_sync?: { frames?: { media_type: string; data: string }[]; yt_url?: string; audio?: { media_type: string; data: string }; step?: number; duration?: number; bpm?: number; request?: string }; yt_frames?: string; deep?: boolean; async?: boolean; sheet_id?: string };
     const keys = detectKeys();
     keys.deep = body.deep === true; // 고급 추론(xhigh) 켰는지. 기본은 빠른 모델
     const { gemini: geminiKey, openai: openaiKey } = keys;
@@ -247,6 +247,9 @@ Deno.serve(async (req) => {
       if (audioIn && !keys.gemini) throw new Error("음악을 AI가 직접 들으려면 Gemini 키가 필요해요 (aistudio.google.com/apikey 에서 무료로 받아 Supabase Secrets에 넣어 주세요)");
       const bpm = typeof vs.bpm === "number" && vs.bpm > 0 ? vs.bpm : null;
       const beat = bpm ? 60 / bpm : null;
+      // 사용자가 말로 한 요청("1번이 반복돼", "중간에 쉬는 데 있어", "전체를 꼼꼼히 봐 줘")이 있으면 영상을 보면서 같이 반영
+      const userReq = String(vs.request ?? "").trim();
+      const reqSec = userReq ? `\n\n[사용자 요청]\n${userReq}\n\n사용자 요청을 최우선으로 반영합니다(반복·쉼·순서·시작 시각). 요청에 없는 부분은 영상/음악 전체를 처음부터 끝까지 직접 보고 들어 판단하며, 스텝지와 대조해 반복되는 줄·쉬는 구간·순서 바뀜을 스스로 찾습니다. 요청이 영상과 맞지 않으면 영상을 따르고 note에 그 사실을 적습니다.` : "";
       if (ytUrl && !keys.gemini) throw new Error("유튜브 영상을 AI가 직접 보려면 Gemini 키가 필요해요 (aistudio.google.com/apikey 에서 무료로 받아 Supabase Secrets에 넣어 주세요)");
       const sys = `당신은 셔플댄스 영상을 보고 스텝지의 각 줄이 영상에서 언제 시작되는지 찾아 주는 전문가입니다. 셔플댄스의 기본 스텝(런닝맨: 제자리에서 무릎을 들며 뒤로 미끄러지듯 달리는 동작, 티스텝: 옆으로 발뒤꿈치·발끝을 비틀며 이동, 찰스턴: 앞뒤로 차며 몸을 비트는 동작, 크리스크로스: 두 발을 교차하는 점프, 킥: 발 차기, 스핀/턴: 회전, 글라이드: 미끄러지듯 이동, 킥볼체인지)을 화면에서 알아볼 수 있습니다.
 
@@ -257,7 +260,7 @@ Deno.serve(async (req) => {
 
 [할 일]
 1. 영상에서 춤이 실제로 시작되는 순간(전주 동안 서 있거나 준비 자세인 구간은 쉼)을 찾습니다.
-2. 스텝지 순서대로 각 줄의 동작이 시작되는 시각을 찾습니다. 줄이 반복되면(후렴 두 번 등) 같은 줄 번호를 여러 번 적고, 건너뛰면 뺍니다. 줄 사이에 멈춤·전환이 있으면 그만큼 시간이 비어도 됩니다.
+2. 스텝지 순서대로 각 줄의 동작이 시작되는 시각을 찾습니다. 영상을 끝까지 다 보고 스텝지와 대조하세요: 어떤 줄이든 반복되면(1번을 두 번, 후렴 두 번 등) 같은 줄 번호를 그 횟수만큼 적고, 건너뛰면 빼고, 중간에 쉬거나 서 있는 구간이 있으면 {"rest": 박수} 항목을 넣습니다. 줄 사이에 멈춤·전환이 있으면 그만큼 시간이 비어도 됩니다.
 3. 춤은 박자에 맞춰 추므로, 첫 줄 시작 시각을 기준으로 다음 줄들은 보통 "앞 줄 시작 + 앞 줄 박수 × 한 박"에 시작합니다. 장면표에서 동작이 바뀌는 지점으로 이를 확인·보정하세요. 장면 간격이 ${vs.step}초라 시각은 그 절반 정도 오차가 있을 수 있으니, 박자 격자에 맞게 다듬어 소수 첫째 자리까지 적습니다.
 4. 스텝 줄의 박수는 목록에 적힌 그대로입니다. 바꾸지 않습니다.
 
@@ -265,11 +268,12 @@ Deno.serve(async (req) => {
 {"plan":[{"line":1,"at":12.3},{"line":2,"at":16.1}, ...], "start_at": 첫 줄 시작 초, "bpm": 영상으로 짐작한 BPM 또는 null, "confidence":"high|medium|low", "note":"한 줄 요약(한국어, 30자 내)", "unclear":""}
 - plan은 춤추는 순서대로, 모든 항목에 at(초)을 넣습니다.
 - 영상이 이 스텝지의 춤이 아니거나 사람이 안 보이면 plan을 빈 배열로 두고 unclear에 이유를 한국어로 짧게 적습니다.`;
-      const ask = audioIn
+      const ask0 = audioIn
         ? `[스텝 줄 목록]\n${body.lines.map((l) => String(l)).join("\n")}\n\n[음악 정보]\n첨부한 음악 파일 전체(소리만, 춤은 안 보임).${bpm ? ` 박자 ${bpm} BPM → 한 박 ${beat!.toFixed(3)}초, 4박 ${(beat! * 4).toFixed(2)}초, 8박 ${(beat! * 8).toFixed(2)}초.` : " 박자는 아직 모릅니다(음악에서 재서 bpm에 적어 주세요)."}\n\n음악을 처음부터 끝까지 듣고 전주가 끝나고 춤(1번 줄)이 시작될 만한 순간, 그리고 구절(8박 단위)이 바뀌는 순간들을 박자 격자에 맞춰 찾아 각 줄의 시작 시각을 초 단위로 JSON으로 답해 주세요. 스텝지의 줄 순서와 박수를 그대로 따르고, 음악의 절·후렴 구조와 길이가 맞도록 쉼이나 반복을 넣으세요.`
         : ytUrl
         ? `[스텝 줄 목록]\n${body.lines.map((l) => String(l)).join("\n")}\n\n[영상 정보]\n첨부한 유튜브 영상 전체(소리 포함).${bpm ? ` 박자 ${bpm} BPM → 한 박 ${beat!.toFixed(3)}초, 4박 ${(beat! * 4).toFixed(2)}초, 8박 ${(beat! * 8).toFixed(2)}초.` : " 박자는 아직 모릅니다(음악에서 짐작해 bpm에 적어 주세요)."}\n\n영상을 처음부터 끝까지 보고(음악의 박자와 춤 동작을 함께 보고) 각 줄의 시작 시각을 초 단위로 찾아 JSON으로 답해 주세요.`
         : `[스텝 줄 목록]\n${body.lines.map((l) => String(l)).join("\n")}\n\n[영상 정보]\n길이 ${vs.duration}초, ${vs.step}초마다 한 장면, 장면표 ${frames.length}장(시간순).${bpm ? ` 박자 ${bpm} BPM → 한 박 ${beat!.toFixed(3)}초, 4박 ${(beat! * 4).toFixed(2)}초, 8박 ${(beat! * 8).toFixed(2)}초.` : " 박자는 아직 모릅니다."}\n\n장면표를 보고 각 줄의 시작 시각을 찾아 주세요.`;
+      const ask = ask0 + reqSec;
       const run = async () => {
         const inputSec = "[입력]\n- 장면표 그림 여러 장: 영상에서 일정 간격으로 뽑은 프레임을 시간순(왼쪽→오른쪽, 위→아래)으로 붙인 것. 각 칸 왼쪽 위 노란 글씨가 그 장면의 시각(초)입니다.";
         const t = audioIn
