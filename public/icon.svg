@@ -1,20 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#12807a"/>
-      <stop offset="1" stop-color="#0a4f49"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#19191c"/>
+      <stop offset="1" stop-color="#050506"/>
+    </linearGradient>
+    <linearGradient id="rd" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff4b4b"/>
+      <stop offset="1" stop-color="#d9040e"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="15" fill="url(#g)"/>
-  <!-- 스텝지 줄 -->
-  <rect x="13" y="14" width="22" height="3.2" rx="1.6" fill="#fff" opacity="0.55"/>
-  <rect x="13" y="22" width="16" height="3.2" rx="1.6" fill="#fff" opacity="0.4"/>
-  <rect x="13" y="30" width="12" height="3.2" rx="1.6" fill="#fff" opacity="0.28"/>
-  <!-- 음표 -->
-  <path d="M44.5 15.5v24.2" stroke="#fff" stroke-width="4.2" stroke-linecap="round"/>
-  <path d="M44.5 15.5c3.2 1.4 6.8 4.3 7 9.1" stroke="#fff" stroke-width="4.2" stroke-linecap="round" fill="none"/>
-  <ellipse cx="39.2" cy="41.6" rx="7" ry="5.4" fill="#fff" transform="rotate(-18 39.2 41.6)"/>
-  <!-- 발자국 점 -->
-  <circle cx="16" cy="47" r="3" fill="#8fd3cc"/>
-  <circle cx="25" cy="50" r="3" fill="#8fd3cc" opacity="0.7"/>
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+  <!-- 바닥 그림자 -->
+  <ellipse cx="33" cy="57" rx="13" ry="2.2" fill="#e50914" opacity="0.22"/>
+  <!-- 춤추는 사람 -->
+  <g fill="none" stroke="url(#rd)" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32 18 L28.5 33"/>
+    <path d="M31 21 L40.5 13.5 L50 9.5"/>
+    <path d="M31 22 L22 27.5 L15.5 22"/>
+    <path d="M28.5 33 L39.5 41.5 L50.5 36"/>
+    <path d="M28.5 33 L23.5 45.5 L30 55.5"/>
+  </g>
+  <circle cx="34" cy="11.5" r="5.3" fill="url(#rd)"/>
+  <!-- 움직임 선 -->
+  <path d="M10 40 h6 M8 46 h5" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.35"/>
 </svg>

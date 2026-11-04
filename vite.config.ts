@@ -15,7 +15,7 @@ export default defineConfig({
         short_name: '스텝지함',
         description: '셔플댄스 스텝지와 음원을 한곳에',
         lang: 'ko',
-        theme_color: '#0f8f82',
+        theme_color: '#0a0a0b',
         background_color: '#f5f6f8',
         display: 'standalone',
         start_url: './',

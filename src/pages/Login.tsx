@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { configured, supabase } from '../lib/supabase'
-import { Music } from '../components/Icons'
+import { Dancer } from '../components/Icons'
 
 const appUrl = () => window.location.href.split('#')[0]
 // 카카오 로그인은 Supabase에서 Kakao provider를 켠 뒤 true로 바꿉니다.
@@ -27,7 +27,7 @@ export default function Login() {
   return (
     <div className="login">
       <div>
-        <div className="mark"><Music /></div>
+        <div className="mark"><Dancer /></div>
         <h1>스텝지함</h1>
         <p>셔플댄스 스텝지와 음원을 한곳에</p>
       </div>

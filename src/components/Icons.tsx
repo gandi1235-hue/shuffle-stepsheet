@@ -18,3 +18,16 @@ export const User = () => <svg {...base}><circle cx="12" cy="8" r="4" /><path d=
 export const People = () => <svg {...base}><circle cx="9" cy="8" r="3.5" /><circle cx="17" cy="9" r="2.5" /><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5" /><path d="M16 14.5c3 0 6 1.5 6 4.5" /></svg>
 export const Print = () => <svg {...base}><path d="M7 9V3h10v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M7 14h10v7H7z" /></svg>
 export const Gear = () => <svg {...base}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
+
+export const Dancer = () => (
+  <svg viewBox="0 0 64 64" width="24" height="24" aria-hidden="true">
+    <g fill="none" stroke="currentColor" strokeWidth="5.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M32 18 L28.5 33" />
+      <path d="M31 21 L40.5 13.5 L50 9.5" />
+      <path d="M31 22 L22 27.5 L15.5 22" />
+      <path d="M28.5 33 L39.5 41.5 L50.5 36" />
+      <path d="M28.5 33 L23.5 45.5 L30 55.5" />
+    </g>
+    <circle cx="34" cy="11.5" r="5.3" fill="currentColor" />
+  </svg>
+)
