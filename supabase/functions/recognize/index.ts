@@ -1,8 +1,9 @@
-// Supabase Edge Function: 사진 → 표준 스텝지 JSON (Claude 이미지 인식)
-// 배포: supabase functions deploy recognize
-// 비밀키: supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
-
-import Anthropic from "npm:@anthropic-ai/sdk@0.90.0";
+// Supabase Edge Function: 사진 → 협회 양식 스텝지 JSON
+// 대시보드 Edge Functions > Deploy a new function > Via Editor 에서 이름 "recognize"로 이 파일 내용을 붙여 넣어 배포합니다.
+// 비밀키(Edge Functions > Secrets) 중 하나만 넣으면 됩니다:
+//   GEMINI_API_KEY    : Google AI Studio 무료 키 (https://aistudio.google.com/apikey)
+//   ANTHROPIC_API_KEY : Claude API 키 (https://console.anthropic.com)
+// 선택: GEMINI_MODEL (기본 gemini-2.5-flash), CLAUDE_MODEL (기본 claude-sonnet-5-5)
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,23 +34,12 @@ Deno.serve(async (req) => {
     const { images } = await req.json() as { images: { media_type: string; data: string }[] };
     if (!images?.length) throw new Error("이미지가 없습니다");
 
-    const client = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") });
-    const content: Anthropic.MessageParam["content"] = [
-      ...images.map((img) => ({
-        type: "image" as const,
-        source: { type: "base64" as const, media_type: img.media_type as "image/jpeg", data: img.data },
-      })),
-      { type: "text", text: "이 스텝지를 표준 양식 JSON으로 정리해 주세요." },
-    ];
+    const text = Deno.env.get("GEMINI_API_KEY")
+      ? await viaGemini(images)
+      : Deno.env.get("ANTHROPIC_API_KEY")
+        ? await viaClaude(images)
+        : (() => { throw new Error("AI 키가 설정되지 않았습니다 (GEMINI_API_KEY 또는 ANTHROPIC_API_KEY)"); })();
 
-    const msg = await client.messages.create({
-      model: "claude-sonnet-5-5",
-      max_tokens: 4000,
-      system: SYSTEM,
-      messages: [{ role: "user", content }],
-    });
-
-    const text = msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("");
     const start = text.indexOf("{");
     const end = text.lastIndexOf("}");
     const json = JSON.parse(text.slice(start, end + 1));
@@ -64,3 +54,54 @@ Deno.serve(async (req) => {
     });
   }
 });
+
+type Img = { media_type: string; data: string };
+const ASK = "이 스텝지를 위 양식의 JSON으로 정리해 주세요.";
+
+async function viaGemini(images: Img[]): Promise<string> {
+  const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": Deno.env.get("GEMINI_API_KEY")! },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM }] },
+        contents: [{
+          role: "user",
+          parts: [...images.map((i) => ({ inline_data: { mime_type: i.media_type, data: i.data } })), { text: ASK }],
+        }],
+        generationConfig: { responseMimeType: "application/json", temperature: 0 },
+      }),
+    },
+  );
+  const j = await res.json();
+  if (!res.ok) throw new Error(j?.error?.message ?? `Gemini 오류 ${res.status}`);
+  return (j.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? "").join("");
+}
+
+async function viaClaude(images: Img[]): Promise<string> {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": Deno.env.get("ANTHROPIC_API_KEY")!,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: Deno.env.get("CLAUDE_MODEL") ?? "claude-sonnet-5-5",
+      max_tokens: 4000,
+      system: SYSTEM,
+      messages: [{
+        role: "user",
+        content: [
+          ...images.map((i) => ({ type: "image", source: { type: "base64", media_type: i.media_type, data: i.data } })),
+          { type: "text", text: ASK },
+        ],
+      }],
+    }),
+  });
+  const j = await res.json();
+  if (!res.ok) throw new Error(j?.error?.message ?? `Claude 오류 ${res.status}`);
+  return (j.content ?? []).filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("");
+}

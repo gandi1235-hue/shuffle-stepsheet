@@ -25,7 +25,7 @@
    npm i -g supabase
    supabase login
    supabase link --project-ref <프로젝트 ref>
-   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # https://console.anthropic.com 에서 발급
+   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # 또는 GEMINI_API_KEY (무료)
    supabase functions deploy recognize
    ```
 5. **앱 환경변수** — `.env.example`을 `.env`로 복사하고 Supabase URL과 anon key 입력.
