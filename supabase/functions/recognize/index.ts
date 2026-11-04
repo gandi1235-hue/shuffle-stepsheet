@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
     if (!who?.id) {
       return new Response(JSON.stringify({ error: "로그인이 필요해요" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string }; video_sync?: { frames: { media_type: string; data: string }[]; step: number; duration: number; bpm?: number }; yt_frames?: string; deep?: boolean; async?: boolean; sheet_id?: string };
+    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string }; video_sync?: { frames?: { media_type: string; data: string }[]; yt_url?: string; step?: number; duration?: number; bpm?: number }; yt_frames?: string; deep?: boolean; async?: boolean; sheet_id?: string };
     const keys = detectKeys();
     keys.deep = body.deep === true; // 고급 추론(xhigh) 켰는지. 기본은 빠른 모델
     const { gemini: geminiKey, openai: openaiKey } = keys;
@@ -231,11 +231,13 @@ Deno.serve(async (req) => {
     }
 
     // 영상 보고 맞추기 모드(고도 추론): { video_sync: { frames(장면표 그림들), step, duration, bpm }, lines } — AI가 장면표를 보고 줄마다 시작 시각을 찾아 계획으로
-    if (body.video_sync?.frames?.length && body.lines?.length) {
+    if ((body.video_sync?.frames?.length || body.video_sync?.yt_url) && body.lines?.length) {
       const vs = body.video_sync;
-      const frames = vs.frames.slice(0, 24);
+      const frames = (vs.frames ?? []).slice(0, 24);
+      const ytUrl = vs.yt_url?.trim();
       const bpm = typeof vs.bpm === "number" && vs.bpm > 0 ? vs.bpm : null;
       const beat = bpm ? 60 / bpm : null;
+      if (ytUrl && !keys.gemini) throw new Error("유튜브 영상을 AI가 직접 보려면 Gemini 키가 필요해요 (aistudio.google.com/apikey 에서 무료로 받아 Supabase Secrets에 넣어 주세요)");
       const sys = `당신은 셔플댄스 영상을 보고 스텝지의 각 줄이 영상에서 언제 시작되는지 찾아 주는 전문가입니다. 셔플댄스의 기본 스텝(런닝맨: 제자리에서 무릎을 들며 뒤로 미끄러지듯 달리는 동작, 티스텝: 옆으로 발뒤꿈치·발끝을 비틀며 이동, 찰스턴: 앞뒤로 차며 몸을 비트는 동작, 크리스크로스: 두 발을 교차하는 점프, 킥: 발 차기, 스핀/턴: 회전, 글라이드: 미끄러지듯 이동, 킥볼체인지)을 화면에서 알아볼 수 있습니다.
 
 [입력]
@@ -253,9 +255,11 @@ Deno.serve(async (req) => {
 {"plan":[{"line":1,"at":12.3},{"line":2,"at":16.1}, ...], "start_at": 첫 줄 시작 초, "bpm": 영상으로 짐작한 BPM 또는 null, "confidence":"high|medium|low", "note":"한 줄 요약(한국어, 30자 내)", "unclear":""}
 - plan은 춤추는 순서대로, 모든 항목에 at(초)을 넣습니다.
 - 영상이 이 스텝지의 춤이 아니거나 사람이 안 보이면 plan을 빈 배열로 두고 unclear에 이유를 한국어로 짧게 적습니다.`;
-      const ask = `[스텝 줄 목록]\n${body.lines.map((l) => String(l)).join("\n")}\n\n[영상 정보]\n길이 ${vs.duration}초, ${vs.step}초마다 한 장면, 장면표 ${frames.length}장(시간순).${bpm ? ` 박자 ${bpm} BPM → 한 박 ${beat!.toFixed(3)}초, 4박 ${(beat! * 4).toFixed(2)}초, 8박 ${(beat! * 8).toFixed(2)}초.` : " 박자는 아직 모릅니다."}\n\n장면표를 보고 각 줄의 시작 시각을 찾아 주세요.`;
+      const ask = ytUrl
+        ? `[스텝 줄 목록]\n${body.lines.map((l) => String(l)).join("\n")}\n\n[영상 정보]\n첨부한 유튜브 영상 전체(소리 포함).${bpm ? ` 박자 ${bpm} BPM → 한 박 ${beat!.toFixed(3)}초, 4박 ${(beat! * 4).toFixed(2)}초, 8박 ${(beat! * 8).toFixed(2)}초.` : " 박자는 아직 모릅니다(음악에서 짐작해 bpm에 적어 주세요)."}\n\n영상을 처음부터 끝까지 보고(음악의 박자와 춤 동작을 함께 보고) 각 줄의 시작 시각을 초 단위로 찾아 JSON으로 답해 주세요.`
+        : `[스텝 줄 목록]\n${body.lines.map((l) => String(l)).join("\n")}\n\n[영상 정보]\n길이 ${vs.duration}초, ${vs.step}초마다 한 장면, 장면표 ${frames.length}장(시간순).${bpm ? ` 박자 ${bpm} BPM → 한 박 ${beat!.toFixed(3)}초, 4박 ${(beat! * 4).toFixed(2)}초, 8박 ${(beat! * 8).toFixed(2)}초.` : " 박자는 아직 모릅니다."}\n\n장면표를 보고 각 줄의 시작 시각을 찾아 주세요.`;
       const run = async () => {
-        const t = await askAI(frames, ask, sys, keys, "video");
+        const t = ytUrl ? await viaGeminiVideo(ytUrl, keys.gemini!, ask, sys.replace("[입력]\n- 장면표 그림 여러 장: 영상에서 일정 간격으로 뽑은 프레임을 시간순(왼쪽→오른쪽, 위→아래)으로 붙인 것. 각 칸 왼쪽 위 노란 글씨가 그 장면의 시각(초)입니다.", "[입력]\n- 유튜브 영상 자체(그림과 소리). 시각은 영상의 실제 재생 시각(초)입니다."), keys.deep === true) : await askAI(frames, ask, sys, keys, "video");
         const s0 = t.indexOf("{"); const e0 = t.lastIndexOf("}");
         const j = s0 >= 0 ? JSON.parse(t.slice(s0, e0 + 1)) : {};
         const plan = Array.isArray(j.plan) ? j.plan : [];
@@ -617,6 +621,65 @@ async function viaOpenAI(images: Img[], key: string, ask: string, sys: string, t
     }
   }
   throw new Error(`OpenAI 오류: ${lastMsg}`);
+}
+
+let geminiVideoCache: { key: string; models: string[] } | null = null;
+/** 유튜브 영상을 직접 볼 수 있는 Gemini 모델들(선호 순). GEMINI_VIDEO_MODEL이 있으면 맨 앞 */
+async function geminiVideoModels(key: string): Promise<string[]> {
+  if (geminiVideoCache?.key === key) return geminiVideoCache.models;
+  const prefer = ["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-2.5-pro", "gemini-3.1-flash", "gemini-3-flash-preview", "gemini-2.5-flash"];
+  let avail: string[] = [];
+  try {
+    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": key } });
+    const j = await res.json();
+    avail = ((j.models ?? []) as { name: string; supportedGenerationMethods?: string[] }[])
+      .filter((m) => (m.supportedGenerationMethods ?? []).includes("generateContent") && /gemini-(2\.5|3)/.test(m.name) && !/image|tts|live|audio|embedding|robotics|computer/i.test(m.name))
+      .map((m) => m.name.replace(/^models\//, ""));
+  } catch (e) {
+    console.error(`[gemini] models list failed: ${(e as Error).message}`);
+  }
+  const ordered = [...prefer.filter((p) => avail.includes(p)), ...avail.filter((a) => !prefer.includes(a) && /pro|flash/.test(a) && !/lite|8b/.test(a))];
+  if (!ordered.length) ordered.push("gemini-2.5-pro", "gemini-2.5-flash");
+  const forced = Deno.env.get("GEMINI_VIDEO_MODEL")?.trim();
+  const models = forced ? [forced, ...ordered.filter((m) => m !== forced)] : ordered;
+  console.log(`[gemini] video models: ${models.slice(0, 4).join(", ")}`);
+  geminiVideoCache = { key, models };
+  return models;
+}
+
+/** Gemini에게 유튜브 영상(공개 영상)을 직접 보여 주고 답을 받음. 모델이 안 되면 다음 모델로 */
+async function viaGeminiVideo(ytUrl: string, key: string, ask: string, sys: string, deep: boolean): Promise<string> {
+  const models = await geminiVideoModels(key);
+  let lastMsg = "";
+  for (const model of models.slice(0, 4)) {
+    for (const withThink of [true, false]) {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: sys }] },
+          contents: [{ role: "user", parts: [{ file_data: { file_uri: ytUrl } }, { text: ask }] }],
+          generationConfig: { responseMimeType: "application/json", temperature: 0, ...(withThink ? { thinkingConfig: { thinkingBudget: deep ? 16384 : 2048 } } : {}) },
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        lastMsg = j?.error?.message ?? `HTTP ${res.status}`;
+        console.error(`[gemini] video ${model}${withThink ? "" : " (no thinking)"}: ${res.status} ${lastMsg}`);
+        if (withThink && res.status === 400 && /thinking/i.test(lastMsg)) continue;
+        break;
+      }
+      const text = ((j.candidates?.[0]?.content?.parts ?? []) as { text?: string }[]).map((p) => p.text ?? "").join("");
+      if (text.includes("{")) {
+        console.log(`[gemini] video ok via ${model}`);
+        return text;
+      }
+      lastMsg = `답이 비어 있음 (${j.candidates?.[0]?.finishReason ?? j.promptFeedback?.blockReason ?? "?"})`;
+      console.error(`[gemini] video ${model}: ${lastMsg}`);
+      break;
+    }
+  }
+  throw new Error(`유튜브 영상을 보지 못했어요: ${lastMsg}`);
 }
 
 async function viaGemini(images: Img[], key: string, ask = ASK, sys = SYSTEM): Promise<string> {

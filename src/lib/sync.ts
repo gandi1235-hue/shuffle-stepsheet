@@ -1,4 +1,4 @@
-import { beatsOf, kindOf, type Stepsheet, type SyncEvent, type SyncPlanItem } from './types'
+import { barBeats, beatsOf, kindOf, type Stepsheet, type SyncEvent, type SyncPlanItem } from './types'
 
 export const DEFAULT_BPM = 128
 const r1 = (x: number) => Math.round(x * 10) / 10
@@ -21,7 +21,14 @@ export function stepIdxOf(sheet: Lines) {
 /** 한 줄의 박수. 안 적혀 있으면 8박 */
 export function lineBeats(sheet: Lines, i: number) {
   const b = sheet.lines[i].steps.reduce((n, st) => n + beatsOf(st.beats), 0)
-  return b > 0 ? b : 8
+  if (b > 0) return b
+  const bars = barBeats(sheet.lines[i].steps)
+  return bars > 0 ? bars : 8
+}
+/** 박수가 적혀 있지도, 8박 도장이 찍혀 있지도 않아 8박으로 추정하는 줄인지 */
+export function beatsGuessed(sheet: Lines, i: number) {
+  const st = sheet.lines[i].steps
+  return !st.some((s) => beatsOf(s.beats) > 0) && barBeats(st) === 0
 }
 /** 계획대로 t0부터 박자로 시각을 채움 (쉼은 시간만 흐름, at이 있는 줄은 그 시각으로 맞춤) */
 export function fillEvents(sheet: Lines, plan: PlanItem[], t0: number, rate: number): SyncEvent[] {
@@ -124,7 +131,7 @@ export function orderPromptLines(sheet: Lines): string[] {
   sheet.lines.forEach((l, i) => {
     if (kindOf(l) === 'section') section = l.label ?? ''
     const k = idx.indexOf(i)
-    if (k >= 0) out.push(`${k + 1}. ${section ? `[${section}] ` : ''}${l.steps.map((s) => `${s.name}${s.beats ? ' ' + s.beats : ''}`).join(' / ')} (${lineBeats(sheet, i)}박${l.steps.some((s) => beatsOf(s.beats) > 0) ? '' : ', 안 적혀 있어 8박으로 추정'})`)
+    if (k >= 0) out.push(`${k + 1}. ${section ? `[${section}] ` : ''}${l.steps.map((s) => `${s.name}${s.beats ? ' ' + s.beats : ''}${s.bar ? ' |' : ''}`).join(' / ')} (${lineBeats(sheet, i)}박${beatsGuessed(sheet, i) ? ', 안 적혀 있어 8박으로 추정' : barBeats(l.steps) > 0 && !l.steps.some((s) => beatsOf(s.beats) > 0) ? ', |는 8박 경계' : ''})`)
   })
   return out
 }

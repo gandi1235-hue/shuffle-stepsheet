@@ -31,6 +31,7 @@ export default function AddPage() {
   const camRef = useRef<HTMLInputElement>(null)
   // ── 말로 고치기(AI가 줄 내용을 직접 바꿈) ──
   const [askOpen, setAskOpen] = useState(false)
+  const [barMode, setBarMode] = useState(false) // 8박 찍기: 스텝을 누르면 그 스텝에서 한 구절이 끝난다는 도장
   const [askText, setAskText] = useState('')
   const [asking, setAsking] = useState(false)
   const [askNote, setAskNote] = useState('')
@@ -215,6 +216,15 @@ export default function AddPage() {
     setTexts((x) => ({ ...x, [i]: t }))
     setLine(i, { ...data.lines[i], steps: parseLineText(t) })
   }
+  /** 8박 도장 켜고 끄기: 스텝 j 뒤에 " |" */
+  const toggleBar = (i: number, j: number) => {
+    const l = data.lines[i]
+    const steps = l.steps.map((st, k) => (k === j ? { ...st, bar: !st.bar } : st))
+    const next = { ...l, steps }
+    setLine(i, next)
+    setTexts((x) => ({ ...x, [i]: lineToText(next) }))
+    haptic(10)
+  }
   const shiftTexts = (from: number, delta: number, drop?: number) =>
     setTexts((x) => {
       const o: Record<number, string> = {}
@@ -398,6 +408,9 @@ export default function AddPage() {
             <button type="button" className="btn primary" style={{ flex: 1, minHeight: 44 }} onClick={() => setAskOpen(true)}>
               🎤 말로 고치기
             </button>
+            <button type="button" className={barMode ? 'btn on' : 'btn'} style={{ minHeight: 44 }} onClick={() => setBarMode((v) => !v)} title="박수가 안 적힌 스텝지에 8박 경계를 찍어요">
+              {barMode ? '📍 찍기 끝' : '📍 8박 찍기'}
+            </button>
             {undoLines && (
               <button type="button" className="btn" style={{ minHeight: 44 }} onClick={undoAsk}>
                 되돌리기
@@ -405,6 +418,11 @@ export default function AddPage() {
             )}
           </div>
           {askNote && <div className="panel-desc" style={{ padding: '0 12px 6px' }}>방금 고친 것: {askNote}</div>}
+          {barMode && (
+            <div className="panel-desc" style={{ padding: '0 12px 6px' }}>
+              박수가 안 적힌 줄에서 <b>한 구절(8박)이 끝나는 스텝을 누르세요.</b> 그 스텝 뒤에 ┃ 도장이 찍히고, 도장 하나가 8박으로 계산돼요. 다시 누르면 지워져요.
+            </div>
+          )}
           {(() => {
             let n = 0
             return data.lines.map((l, i) => {
@@ -418,7 +436,23 @@ export default function AddPage() {
                   <button type="button" className="kind" title="줄 종류 바꾸기" onClick={() => cycleKind(i)}>
                     {no}
                   </button>
-                  {kind === 'steps' ? (
+                  {kind === 'steps' && barMode ? (
+                    <div className="barline" aria-label={`${i + 1}줄 8박 찍기`}>
+                      {l.steps.filter((st) => st.name.trim()).length ? (
+                        l.steps.map((st, j) =>
+                          st.name.trim() ? (
+                            <button type="button" key={j} className={st.bar ? 'chip on' : 'chip'} onClick={() => toggleBar(i, j)}>
+                              {st.name}
+                              {st.beats ? <small> {st.beats}</small> : null}
+                              {st.bar ? <b> ┃</b> : null}
+                            </button>
+                          ) : null,
+                        )
+                      ) : (
+                        <span className="empty">(빈 줄)</span>
+                      )}
+                    </div>
+                  ) : kind === 'steps' ? (
                     <input aria-label={`${i + 1}줄 스텝`} className={unsure ? 'uncertain-input' : ''} value={lineText(i, l)} placeholder={i === 0 ? '예) 전주 - 바운스 8' : hint} onChange={(e) => setText(i, e.target.value)} />
                   ) : (
                     <input aria-label={`${i + 1}줄 ${no}`} value={l.label ?? ''} placeholder={hint} onChange={(e) => setLine(i, { ...l, label: e.target.value })} />

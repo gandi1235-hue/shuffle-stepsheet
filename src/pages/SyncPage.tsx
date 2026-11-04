@@ -5,14 +5,14 @@ import YouTubePlayer, { youtubeId } from '../components/YouTubePlayer'
 import SheetTable from '../components/SheetTable'
 import TopBar from '../components/TopBar'
 import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
-import { getFolder, getSheet, planRequest, signedUrl, updateSync, videoSync, ytStoryboard } from '../lib/api'
+import { getFolder, getSheet, planRequest, signedUrl, updateSync, videoSync } from '../lib/api'
 import { haptic } from '../lib/prefs'
 import { useSpeech } from '../lib/speech'
 import { detectTempo, snapToBeat, type Tempo } from '../lib/tempo'
 import { activeLine, eventsOf, marksFromEvents, savedBpm, savedPlan, withSync, type Folder, type Stepsheet, type SyncEvent, type SyncSource } from '../lib/types'
 import { DEFAULT_BPM, bpmFromEvents, fillEvents, foldBpm, linesToPlan, orderPromptLines, planFromReply, planIndexOfEvent, planLines, planOf, planText, stepIdxOf, unpinned, isRest, type PlanItem } from '../lib/sync'
 import { JOB_EVENT, addJob, jobFor, removeJob } from '../lib/jobs'
-import { contactSheets, storyboardSheets } from '../lib/frames'
+import { contactSheets } from '../lib/frames'
 import DeepToggle from '../components/DeepToggle'
 
 const fmtT = (x: number) => `${Math.floor(x / 60)}:${Math.floor(x % 60).toString().padStart(2, '0')}`
@@ -268,17 +268,18 @@ export default function SyncPage() {
   const watchVideo = async () => {
     if (watching) return
     try {
-      let fr
+      let src: { sheets: { media_type: string; data: string }[]; step: number; duration: number } | { ytUrl: string }
       if (playingYt && ytId) {
-        setWatching('유튜브에서 미리보기 장면 가져오는 중…')
-        const sb = await ytStoryboard(ytId)
-        fr = await storyboardSheets(sb, (d, n) => setWatching(`장면표 만드는 중… ${Math.round((d / n) * 100)}%`))
+        // 유튜브는 AI(Gemini)가 영상을 직접 봄 — 서버에서 영상을 내려받지 않음
+        setWatching('AI에게 유튜브 영상을 보여 주는 중…')
+        src = { ytUrl: `https://www.youtube.com/watch?v=${ytId}` }
       } else if (fileIsVideo && audio) {
         setWatching('영상에서 장면 뽑는 중… 0%')
-        fr = await contactSheets(audio, (d, n) => setWatching(`영상에서 장면 뽑는 중… ${Math.round((d / n) * 100)}%`))
+        const fr = await contactSheets(audio, (d, n) => setWatching(`영상에서 장면 뽑는 중… ${Math.round((d / n) * 100)}%`))
+        setWatching(`AI에게 영상 ${fr.frames}장면을 보내는 중…`)
+        src = fr
       } else throw new Error('유튜브 링크나 영상 파일이 있어야 영상을 볼 수 있어요')
-      setWatching(`GPT에게 영상 ${fr.frames}장면을 보내는 중…`)
-      const r = await videoSync(sheet.id, fr.sheets, orderPromptLines(sheet), bpm, fr.step, fr.duration)
+      const r = await videoSync(sheet.id, src, orderPromptLines(sheet), bpm)
       if ('jobId' in r) {
         // 서버에서 이어서 돎: 화면을 떠나거나 앱을 꺼도 끝나면 저장되고 알려 줌
         addJob({ id: r.jobId, sheetId: sheet.id, kind: 'video_sync', src: playingYt ? 'yt' : 'file', bpm, title: sheet.song?.title ?? '스텝지', started: Date.now() })
@@ -402,9 +403,9 @@ export default function SyncPage() {
             <b>🎬 영상 보고 맞추기 (고도 추론)</b>
             <br />
             {playingYt && ytId
-              ? 'GPT가 유튜브 영상의 장면들을 보고 줄마다 시작 시각을 찾아요. 1~3분 걸려요. 틀린 줄은 나중에 눌러 고치면 돼요.'
+              ? 'AI(Gemini)가 유튜브 영상을 직접 보고 들으며 줄마다 시작 시각을 찾아요. 1~3분 걸리고, 끝나면 자동 저장돼요. 틀린 줄은 나중에 눌러 고치면 돼요.'
               : fileIsVideo
-                ? 'GPT가 올려 둔 영상을 보고 줄마다 시작 시각을 찾아요. 1~3분 걸려요.'
+                ? 'AI가 올려 둔 영상을 보고 줄마다 시작 시각을 찾아요. 1~3분 걸려요.'
                 : '유튜브 링크나 영상 파일이 있는 스텝지에서 쓸 수 있어요.'}
           </div>
           <button type="button" className="btn" disabled={Boolean(watching) || Boolean(jobId) || asking || !((playingYt && ytId) || fileIsVideo)} onClick={watchVideo}>
@@ -463,7 +464,7 @@ export default function SyncPage() {
             {stamps !== null ? (
               <>
                 <div className="sync-hint">
-                  노래를 들으며 <b>한 구절(8박)이 시작될 때마다</b> 찍으세요. 처음 찍는 순간이 1번 줄 시작이에요. 서너 번만 찍어도 박자가 잡혀요.
+                  노래를 들으며 <b>한 구절(8박)이 시작될 때마다</b> 찍으세요. 처음 찍는 순간이 1번 줄 시작이고, 찍은 간격으로 박자(BPM)를 정확히 잡아요. 서너 번만 찍어도 돼요.
                 </div>
                 <div className="row">
                   <button type="button" className="btn next" onClick={stamp}>
@@ -498,7 +499,7 @@ export default function SyncPage() {
                   여기부터 ({firstNo}번 줄 시작)
                 </button>
                 <button type="button" className="btn ask-btn" onClick={() => setStamps([])}>
-                  8박
+                  박자
                   <br />
                   찍기
                 </button>
@@ -529,7 +530,7 @@ export default function SyncPage() {
                     직접 요청
                   </button>
                   <button type="button" className="btn" onClick={() => setStamps([])}>
-                    8박 찍기
+                    박자 찍기
                   </button>
                   <button type="button" className="btn" onClick={undo} disabled={!history.length}>
                     되돌리기

@@ -1,4 +1,4 @@
-import { beatsOf, fmtBeats, kindOf, sheetStats, type Line, type Note } from '../lib/types'
+import { barBeats, beatsOf, fmtBeats, kindOf, sheetStats, type Line, type Note } from '../lib/types'
 
 interface Props {
   title: string
@@ -77,9 +77,14 @@ export default function SheetTable({ title, artist, creator, creatorInfo, lines,
                             {s.name}
                           </span>
                           {s.beats && <span className="beats">{fmtBeats(s.beats)}</span>}
+                          {s.bar && (
+                            <span className="bar8" title="여기서 8박 끝">
+                              ┃
+                            </span>
+                          )}
                         </span>
                       ))}
-                    {marks && !l.steps.some((s) => beatsOf(s.beats) > 0) && (
+                    {marks && !l.steps.some((s) => beatsOf(s.beats) > 0) && barBeats(l.steps) === 0 && (
                       <span className="beats guess" title="박수가 안 적혀 있어 8박으로 보고 계산해요. 수정 화면에서 박수를 적어 주면 더 정확해요">
                         8박?
                       </span>

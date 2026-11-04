@@ -648,3 +648,13 @@ a.msg-who { display: block; }
 /* 동기화 · 서버에서 돌고 있는 작업 표시 */
 .syncbar .job-chip { display: flex; align-items: center; gap: 8px; font-size: 13.5px; line-height: 1.35; background: rgba(255,235,59,0.12); border: 1px dashed rgba(255,235,59,0.5); border-radius: 10px; padding: 8px 10px; margin: 4px 0; }
 .syncbar .btn.tiny { flex: none; padding: 4px 10px; font-size: 13px; min-height: 0; }
+
+/* 8박 도장 */
+.form-body .bar8 { color: var(--accent); font-weight: 800; margin-left: 2px; }
+.editline .barline { display: flex; flex-wrap: wrap; gap: 6px; min-height: 42px; align-items: center; }
+.editline .barline .chip { border: 1.5px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 999px; padding: 7px 12px; font-size: 15px; font-weight: 600; min-height: 36px; }
+.editline .barline .chip small { font-weight: 400; opacity: 0.8; }
+.editline .barline .chip.on { border-color: var(--accent); background: var(--accent-soft); }
+.editline .barline .chip.on b { color: var(--accent); }
+.editline .barline .empty { color: var(--muted); font-size: 14px; }
+.btn.on { border-color: var(--accent); background: var(--accent-soft); }

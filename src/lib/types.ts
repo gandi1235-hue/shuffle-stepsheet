@@ -40,6 +40,8 @@ export interface Step {
   /** 사진에 적힌 원래 표기 (표준화 전, 다르면만 채움) */
   raw?: string
   uncertain?: boolean
+  /** 8박 도장: 박수가 안 적힌 스텝지에서 "이 스텝에서 한 구절(8박)이 끝남"을 사용자가 찍어 둔 표시 (글로는 뒤에 " |") */
+  bar?: boolean
 }
 
 /** 줄 종류: steps 일반 / section 구간 제목 / repeat 반복 지시 / rest 쉼·전환 / text 그 밖의 글 */
@@ -135,19 +137,30 @@ export const normalizeLines = (ls: unknown): Line[] => (Array.isArray(ls) ? ls :
 
 /** 스텝 줄 → 한 줄 글 ("런닝맨 4 / 티스텝 4") */
 export function lineToText(l: Line): string {
-  return l.steps.map((s) => (s.beats ? `${s.name} ${fmtBeats(s.beats)}` : s.name)).join(' / ')
+  return l.steps.map((s) => `${s.beats ? `${s.name} ${fmtBeats(s.beats)}` : s.name}${s.bar ? ' |' : ''}`).join(' / ')
 }
-/** 한 줄 글 → 스텝들. " / "로 나누고 맨 뒤 숫자를 박수로 */
+/** 한 줄 글 → 스텝들. " / "로 나누고 맨 뒤 숫자를 박수로. " | "는 8박 도장(앞 스텝에서 한 구절 끝) */
 export function parseLineText(text: string): Step[] {
-  return text
-    .split(/\s+\/\s*|\s*\/\s+/)
-    .map((t) => t.trim())
-    .filter(Boolean)
-    .map((t) => {
+  const out: Step[] = []
+  const parts = text.split(/(\s+\/\s*|\s*\/\s+|\s*\|\s*)/)
+  for (let i = 0; i < parts.length; i += 2) {
+    const t = parts[i].trim()
+    const sep = parts[i + 1] ?? ''
+    if (t) {
       const m = t.match(/^(.*?)[\s(]*(\d+)\s*박?\)?$/)
-      if (m && m[1].trim()) return { name: m[1].trim(), beats: m[2] }
-      return { name: t, beats: '' }
-    })
+      out.push(m && m[1].trim() ? { name: m[1].trim(), beats: m[2] } : { name: t, beats: '' })
+    }
+    if (sep.includes('|') && out.length) out[out.length - 1].bar = true
+  }
+  return out
+}
+/** 8박 도장으로 센 줄 박수: 도장 수 × 8, 마지막 도장 뒤에 스텝이 더 있으면 +8. 도장이 없으면 0 */
+export function barBeats(steps: Step[]): number {
+  const named = steps.filter((s) => s.name.trim())
+  const bars = named.filter((s) => s.bar).length
+  if (!bars) return 0
+  const last = named.map((s) => Boolean(s.bar)).lastIndexOf(true)
+  return bars * 8 + (last < named.length - 1 ? 8 : 0)
 }
 
 export function sheetStats(lines: Line[]) {
