@@ -2,6 +2,7 @@
 // 대시보드 Edge Functions > Deploy a new function > Via Editor 에서 이름 "recognize"로 이 파일 내용을 붙여 넣어 배포합니다.
 // 비밀키(Edge Functions > Secrets) 중 하나만 넣으면 됩니다:
 //   GEMINI_API_KEY    : Google AI Studio 무료 키 (https://aistudio.google.com/apikey)
+//                       무료 한도(계정당 하루 20번)를 넘기면 GEMINI_API_KEY_2, GEMINI_API_KEY_3 … 에 넣어 둔 다른 계정 키로 자동으로 넘어감
 //   ANTHROPIC_API_KEY : Claude API 키 (https://console.anthropic.com)
 //   OPENAI_API_KEY    : OpenAI 키 (https://platform.openai.com/api-keys) — 있으면 모든 일(사진 읽기·직접 요청·말로 고치기·아바타·받아 적기)에 GPT를 먼저 씀
 // 글/사진 읽기 우선순위: OpenAI(GPT, 추론 xhigh) → Claude → Gemini. 앞 것이 실패하면 다음 것으로.
@@ -291,7 +292,7 @@ Deno.serve(async (req) => {
             .replace(inputSec, "[입력]\n- 유튜브 미리보기 장면표 여러 장: 영상에서 일정 간격으로 뽑은 작은 프레임을 시간순(왼쪽→오른쪽, 위→아래)으로 격자로 붙인 것. 칸에 시각 글씨는 없고, 칸의 순서와 칸당 초로 시각을 계산합니다. 소리는 없습니다.")
             .replace(`장면 간격이 ${vs.step}초라`, `장면 간격이 ${iv.toFixed(1)}초라`);
           console.log(`[video] storyboard fallback (${why.slice(0, 80)}): ${imgs.length} sprites, grid ${sb.cols}x${sb.rows}, ${iv.toFixed(2)}s/cell`);
-          const out = await askAI(imgs, askSb, sysSb, { ...keys, gemini: undefined }, "video");
+          const out = await askAI(imgs, askSb, sysSb, { ...keys, gemini: undefined, geminis: [] }, "video");
           fallback = " · 미리보기 장면으로만 맞춤(정확도 낮음)";
           return out;
         };
@@ -299,7 +300,7 @@ Deno.serve(async (req) => {
           const sysYt = sys.replace(inputSec, "[입력]\n- 유튜브 영상 자체(그림과 소리). 시각은 영상의 실제 재생 시각(초)입니다.");
           if (!keys.gemini) return viaStoryboard("Gemini 키 없음");
           try {
-            return await viaGeminiMedia({ file_data: { file_uri: ytUrl! } }, keys.gemini, ask, sysYt, keys.deep === true, "video");
+            return await viaGeminiMedia({ file_data: { file_uri: ytUrl! } }, keys.geminis, ask, sysYt, keys.deep === true, "video");
           } catch (e) {
             const msg = (e as Error).message;
             if (!keys.openai && !keys.claude) throw e;
@@ -311,7 +312,7 @@ Deno.serve(async (req) => {
           const sysAu = sys.replace(inputSec, "[입력]\n- 음악 파일 자체(소리만). 시각은 음악의 실제 재생 시각(초)입니다. 춤은 보이지 않으므로 음악의 구조(전주·절·후렴·브릿지)와 박자, 8박 구절 경계로 줄 시작을 추정합니다.");
           if (!keys.gemini) return viaOpenAIAudio(audioIn!, keys.openai!, ask, sysAu);
           try {
-            return await viaGeminiMedia({ inline_data: { mime_type: audioIn!.media_type || "audio/mpeg", data: audioIn!.data } }, keys.gemini, ask, sysAu, keys.deep === true, "audio");
+            return await viaGeminiMedia({ inline_data: { mime_type: audioIn!.media_type || "audio/mpeg", data: audioIn!.data } }, keys.geminis, ask, sysAu, keys.deep === true, "audio");
           } catch (e) {
             if (!keys.openai) throw e;
             console.error(`[audio] gemini failed, trying openai: ${(e as Error).message.slice(0, 200)}`);
@@ -434,10 +435,14 @@ function detectKeys(): Keys {
   const byName = (re: RegExp) => env.filter(unknownShape).find(([k]) => re.test(k))?.[1];
   const claude = byValue(/^sk-ant-/) ?? byName(/ant.?h?rop|claude/i);
   const openai = byValue(/^sk-(?!ant-)/) ?? byName(/openai|gpt/i);
-  const gemini = byValue(/^AIza/) ?? byName(/gemini|google/i);
+  // Gemini 키는 여러 개 가능(GEMINI_API_KEY, GEMINI_API_KEY_2, …): 이름 순으로 쓰다가 한도에 걸리면 다음 키로
+  const geminis = [
+    ...env.filter(([k, v]) => /^AIza/.test(v) || (unknownShape([k, v]) && /gemini|google/i.test(k))).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true })).map(([, v]) => v),
+  ].filter((v, i, a) => a.indexOf(v) === i);
+  const gemini = geminis[0];
   const tag = (v?: string) => (v ? `${v.slice(0, 6)}…(${v.length})` : "-");
-  console.log(`[keys] openai=${tag(openai)} claude=${tag(claude)} gemini=${tag(gemini)}`);
-  return { openai, claude, gemini };
+  console.log(`[keys] openai=${tag(openai)} claude=${tag(claude)} gemini=${tag(gemini)}${geminis.length > 1 ? ` (+${geminis.length - 1})` : ""}`);
+  return { openai, claude, gemini, geminis };
 }
 const ASK = "이 스텝지를 위 양식의 JSON으로 정리해 주세요.";
 
@@ -614,7 +619,7 @@ const jobs = {
   },
 };
 
-type Keys = { openai?: string; claude?: string; gemini?: string; deep?: boolean };
+type Keys = { openai?: string; claude?: string; gemini?: string; geminis: string[]; deep?: boolean };
 type Task = "photo" | "plan" | "edit" | "artist" | "video";
 
 /** 키가 있는 모델을 OpenAI → Claude → Gemini 순으로 시도. 앞 것이 실패하면(모델 없음·한도·시간 초과) 다음 것으로 */
@@ -622,7 +627,7 @@ async function askAI(images: Img[], ask: string, sys: string, keys: Keys, task: 
   const tries: { name: string; run: () => Promise<string> }[] = [];
   if (keys.openai) tries.push({ name: "openai", run: () => viaOpenAI(images, keys.openai!, ask, sys, task, keys.deep === true) });
   if (keys.claude) tries.push({ name: "claude", run: () => viaClaude(images, keys.claude!, ask, sys) });
-  if (keys.gemini) tries.push({ name: "gemini", run: () => viaGemini(images, keys.gemini!, ask, sys) });
+  for (const [i, g] of keys.geminis.entries()) tries.push({ name: keys.geminis.length > 1 ? `gemini#${i + 1}` : "gemini", run: () => viaGemini(images, g, ask, sys) });
   if (!tries.length) throw new Error("AI 키가 설정되지 않았습니다 (OPENAI_API_KEY, ANTHROPIC_API_KEY 또는 GEMINI_API_KEY)");
   let lastErr: Error | null = null;
   for (const t of tries) {
@@ -756,7 +761,24 @@ async function geminiVideoModels(key: string, deep = false): Promise<string[]> {
 
 /** Gemini에게 유튜브 영상(공개 영상)을 직접 보여 주고 답을 받음. 모델이 안 되면 다음 모델로 */
 /** Gemini가 매체(유튜브 링크 file_data 또는 음악 inline_data)를 직접 보고/듣고 답하기 */
-async function viaGeminiMedia(mediaPart: Record<string, unknown>, key: string, ask: string, sys: string, deep: boolean, what: "video" | "audio"): Promise<string> {
+/** Gemini 키가 여러 개면 차례로: 한도 초과·키 오류면 다음 키로 넘어가고, 전부 안 되면 마지막 이유를 알려 줌 */
+async function viaGeminiMedia(mediaPart: Record<string, unknown>, keyList: string[], ask: string, sys: string, deep: boolean, what: "video" | "audio"): Promise<string> {
+  const msgs: string[] = [];
+  for (const [i, key] of keyList.entries()) {
+    try {
+      return await viaGeminiMediaOne(mediaPart, key, ask, sys, deep, what);
+    } catch (e) {
+      const m = (e as Error).message;
+      msgs.push(m);
+      if (i < keyList.length - 1) console.error(`[gemini] key ${i + 1}/${keyList.length} failed, trying next key: ${m.slice(0, 160)}`);
+    }
+  }
+  const quota = msgs.filter((m) => m.includes("무료 한도")).length;
+  if (keyList.length > 1 && quota === keyList.length) throw new Error(`${what === "audio" ? "음악을 듣지" : "유튜브 영상을 보지"} 못했어요: Gemini 키 ${keyList.length}개 모두 무료 한도(하루 20번)를 다 썼어요. 내일 다시 되고, aistudio.google.com에서 결제를 켜면 바로 돼요`);
+  throw new Error(msgs[msgs.length - 1] ?? "Gemini 키가 없어요");
+}
+
+async function viaGeminiMediaOne(mediaPart: Record<string, unknown>, key: string, ask: string, sys: string, deep: boolean, what: "video" | "audio"): Promise<string> {
   const models = await geminiVideoModels(key, deep);
   let lastMsg = "";
   for (const model of models.slice(0, 5)) {
