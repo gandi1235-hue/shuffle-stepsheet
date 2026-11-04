@@ -1,5 +1,7 @@
 # 스텝지함 — 셔플댄스 스텝지 앱
 
+**앱 주소:** https://gandi1235-hue.github.io/shuffle-stepsheet/
+
 셔플댄스 스텝지(스텝 순서표)와 음원을 한곳에 모아, 사진 한 장으로 등록하고 검색해서 바로 틀고, 팀원과 공유하는 웹앱(PWA)입니다. 안드로이드·아이폰·컴퓨터 어디서나 브라우저로 열고 홈 화면에 설치해 씁니다.
 
 ## 기능
@@ -36,7 +38,7 @@ npm run dev        # 로컬 확인
 npm run build      # dist/ 생성
 ```
 
-배포는 Vercel 또는 Netlify에 이 저장소를 연결하고, 환경변수 두 개(`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`)만 넣으면 됩니다. 배포 주소를 카카오톡으로 보내면 회원들이 바로 설치해서 쓸 수 있습니다.
+배포는 GitHub Pages로 자동입니다. `main`에 올리면 `.github/workflows/pages.yml`이 빌드해서 위 앱 주소에 올립니다 (저장소 Settings → Pages → Source: GitHub Actions). Supabase URL과 공개(publishable) 키는 `src/lib/supabase.ts`에 기본값으로 들어 있어 별도 환경변수가 필요 없습니다.
 
 ## 폴더 구조
 
