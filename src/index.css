@@ -716,3 +716,11 @@ a.msg-who { display: block; }
 .deck-tabs button { border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 999px; padding: 6px 12px; font-size: 13.5px; font-weight: 700; cursor: pointer; }
 .deck-tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .deck-tabs .deck-close { margin-left: auto; border-radius: 999px; width: 34px; height: 34px; padding: 0; }
+
+/* 다른 폴더에서 여러 개 가져오기 */
+.pick-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.pick-head .btn.tiny { flex: none; padding: 5px 10px; font-size: 13px; min-height: 0; }
+.pick-list { max-height: 44vh; overflow-y: auto; }
+.card .pick { width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-weight: 900; font-size: 15px; color: #fff; flex: none; }
+.card .pick.on { background: var(--accent); border-color: var(--accent); }
+.card.picked { border-color: var(--accent); background: var(--accent-soft); }

@@ -4,7 +4,7 @@ import TopBar from '../components/TopBar'
 import DeepToggle from '../components/DeepToggle'
 import { Sheet as Modal, useToast } from '../components/ui'
 import { haptic } from '../lib/prefs'
-import { Camera, Chevron, Folder as FolderIcon, Music, Photo } from '../components/Icons'
+import { Camera, Folder as FolderIcon, Photo } from '../components/Icons'
 import { copySheet, deleteSheet, editLines, findDuplicate, getSheet, guessArtist, listFolders, listSongs, recognize, saveSheet, type SongWithSheets } from '../lib/api'
 import { useSpeech } from '../lib/speech'
 import { LINE_KINDS, NOTE_TYPES, emptyLine, emptyRecognized, eventsOf, kindOf, lineToText, parseLineText, type Folder, type Line, type LineKind, type NoteType, type Recognized } from '../lib/types'
@@ -75,7 +75,9 @@ export default function AddPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [srcFolder, setSrcFolder] = useState('')
   const [srcSongs, setSrcSongs] = useState<SongWithSheets[] | null>(null)
-  const [importing, setImporting] = useState('')
+  const [importing, setImporting] = useState('') // 복사 진행 글 ('' = 안 하는 중)
+  const [picked, setPicked] = useState<Set<string>>(new Set()) // 체크한 스텝지들 (여러 개 한 번에 가져오기)
+  const togglePick = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const openImport = () => {
     setImportOpen(true)
     const first = allFolders.find((f) => f.id !== folderId)
@@ -84,20 +86,31 @@ export default function AddPage() {
   useEffect(() => {
     if (!importOpen || !srcFolder) return
     setSrcSongs(null)
+    setPicked(new Set())
     listSongs(srcFolder)
       .then(setSrcSongs)
       .catch(() => setSrcSongs([]))
   }, [importOpen, srcFolder])
-  const importSheet = async (sheetId: string, title: string) => {
+  /** 체크한 스텝지들을 차례로 복사. 하나면 그 스텝지로, 여럿이면 폴더로 이동 */
+  const importPicked = async () => {
     if (!folderId) return toast('저장할 폴더를 골라 주세요')
-    setImporting(sheetId)
+    const items = (srcSongs ?? []).flatMap((sg) => sg.sheets.filter((sh) => picked.has(sh.id)).map((sh) => ({ id: sh.id, title: sg.title })))
+    if (!items.length) return toast('가져올 스텝지를 체크해 주세요')
+    let ok = 0
+    let lastId = ''
     try {
-      const saved = await copySheet(sheetId, folderId)
+      for (const it of items) {
+        setImporting(`${ok + 1}/${items.length} 복사 중… ${it.title}`)
+        const saved = await copySheet(it.id, folderId)
+        lastId = saved.id
+        ok++
+      }
       haptic(20)
-      toast(`"${title}" 스텝지를 불러왔어요`)
-      nav(`/sheet/${saved.id}`, { replace: true })
+      toast(items.length === 1 ? `"${items[0].title}" 스텝지를 불러왔어요` : `스텝지 ${ok}개를 불러왔어요`)
+      if (items.length === 1) nav(`/sheet/${lastId}`, { replace: true })
+      else nav(`/folder/${folderId}`, { replace: true })
     } catch (e) {
-      toast((e as Error).message)
+      toast(`${ok}개 복사한 뒤 멈췄어요: ${(e as Error).message}`)
     } finally {
       setImporting('')
     }
@@ -344,26 +357,45 @@ export default function AddPage() {
                 ))}
             </select>
           </div>
-          <div className="list" style={{ marginTop: 10 }}>
+          {srcSongs && srcSongs.some((sg) => sg.sheets.length) && (
+            <div className="pick-head">
+              <span className="panel-desc">가져올 스텝지를 체크하세요 (여러 개 가능)</span>
+              <button
+                type="button"
+                className="btn tiny"
+                disabled={!!importing}
+                onClick={() => {
+                  const all = srcSongs.flatMap((sg) => sg.sheets.map((sh) => sh.id))
+                  setPicked(picked.size === all.length ? new Set() : new Set(all))
+                }}
+              >
+                {picked.size === srcSongs.reduce((n, sg) => n + sg.sheets.length, 0) ? '전체 해제' : '전체 선택'}
+              </button>
+            </div>
+          )}
+          <div className="list pick-list" style={{ marginTop: 6 }}>
             {srcSongs === null && <div className="panel-desc">불러오는 중…</div>}
             {srcSongs && srcSongs.every((sg) => !sg.sheets.length) && <div className="panel-desc">이 폴더엔 스텝지가 없어요.</div>}
             {srcSongs?.flatMap((sg) =>
               sg.sheets.map((sh) => (
-                <button key={sh.id} type="button" className="card" onClick={() => importSheet(sh.id, sg.title)} disabled={!!importing}>
-                  <span className={sh.audio_path || sh.audio_url ? 'ico' : 'ico soft'}>
-                    <Music />
+                <button key={sh.id} type="button" className={picked.has(sh.id) ? 'card picked' : 'card'} role="checkbox" aria-checked={picked.has(sh.id)} onClick={() => togglePick(sh.id)} disabled={!!importing}>
+                  <span className={picked.has(sh.id) ? 'pick on' : 'pick'} aria-hidden="true">
+                    {picked.has(sh.id) ? '✓' : ''}
                   </span>
                   <span className="grow">
                     <span className="t">{sg.title}</span>
                     <span className="s">
                       {sg.artist ? `${sg.artist} · ` : ''}창작 {sh.creator_name}
+                      {sh.audio_path || sh.audio_url ? ' · 음원 있음' : ''}
                     </span>
                   </span>
-                  {importing === sh.id ? <span className="chip">복사 중…</span> : <Chevron />}
                 </button>
               )),
             )}
           </div>
+          <button type="button" className="btn primary block" style={{ marginTop: 10 }} onClick={importPicked} disabled={!!importing || picked.size === 0}>
+            {importing || (picked.size ? `${picked.size}개 가져오기` : '가져오기')}
+          </button>
         </Modal>
         <div className="bottom">
           <button type="button" className="btn primary block" disabled={files.length === 0 || stage === 'recognizing'} onClick={run}>
