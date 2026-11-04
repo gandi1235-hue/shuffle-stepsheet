@@ -557,7 +557,7 @@ img.avatar { object-position: center top; } /* 전신 캐릭터면 머리 쪽이
 .character.initial { letter-spacing: 0; }
 .lv-line { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .lv-bar { flex: 1; height: 8px; border-radius: 999px; background: var(--soft); overflow: hidden; max-width: 160px; }
-.lv-bar > i { display: block; height: 100%; width: 100%; background: var(--grad); border-radius: 999px; }
+.lv-bar > i { display: block; height: 100%; width: 100%; min-width: 6px; background: var(--grad); border-radius: 999px; transition: width 0.4s; }
 
 /* ── 레벨업 연출 ── */
 .levelup { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(43, 26, 34, 0.6); backdrop-filter: blur(4px); animation: fade-in 0.25s ease-out; padding: 24px; overflow: hidden; }
@@ -594,6 +594,8 @@ img.avatar { object-position: center top; } /* 전신 캐릭터면 머리 쪽이
 @keyframes title-blink { from { filter: brightness(1); transform: scale(1); } to { filter: brightness(1.3); transform: scale(1.08); } }
 .levelup-title-badge { display: inline-block; margin-top: 8px; padding: 6px 14px; border-radius: 999px; background: linear-gradient(135deg, #ffd166, #ff9f43); color: #4a2a00; font-weight: 800; font-size: 15px; animation: new-pop 0.6s cubic-bezier(0.2, 1.8, 0.4, 1) 1s both; box-shadow: 0 0 18px rgba(255, 180, 60, 0.8); }
 .levelup-name { font-size: 14px; color: var(--muted); margin-top: 4px; }
+.levelup-close { font-size: 12px; color: var(--faint); margin-top: 10px; }
+.levelup-x { position: absolute; top: max(14px, env(safe-area-inset-top)); right: 14px; z-index: 5; width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(255,255,255,0.92); color: var(--fg); font-size: 20px; font-weight: 700; cursor: pointer; box-shadow: var(--shadow); }
 @media (prefers-reduced-motion: reduce) { .character.shine, .spark, .levelup-glow, .levelup-title span, .levelup-lv .new, .levelup-rays, .confetti, .levelup-ring, .levelup-card { animation: none; } }
 .member .nm.who { flex: 1 1 100%; min-width: 0; display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; }
 .member .nm.who > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

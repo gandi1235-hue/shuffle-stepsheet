@@ -117,7 +117,7 @@ export default function MembersPage() {
         </div>
 
         <div className="panel-desc" style={{ marginTop: 18 }}>
-          이름을 누르면 본명과 레벨이 보여요. 레벨은 만든 스텝지 수로 올라요(1장 = Lv.2, Lv.8 2급강사, Lv.16 1급강사). 내 이름을 누르면 <Link to="/profile">내 프로필</Link>에서 캐릭터·닉네임을 바꿔요. 폴더 이름 바꾸기·없애기·나가기는 <Link to={`/folder/${id}/edit`}>폴더 편집</Link>에서 해요.
+          이름을 누르면 본명과 레벨이 보여요. 레벨은 만든 스텝지 수로 올라요(1장 Lv.2, 3장 Lv.3, 6장 Lv.4, 10장 Lv.5 2급강사, 21장 Lv.7 1급강사). 내 이름을 누르면 <Link to="/profile">내 프로필</Link>에서 캐릭터·닉네임을 바꿔요. 폴더 이름 바꾸기·없애기·나가기는 <Link to={`/folder/${id}/edit`}>폴더 편집</Link>에서 해요.
         </div>
       </div>
 

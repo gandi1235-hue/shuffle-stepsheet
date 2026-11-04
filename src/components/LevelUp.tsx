@@ -6,13 +6,13 @@ import { levelOf, rememberLevel, seenLevel, titleOf } from '../lib/level'
 import { haptic } from '../lib/prefs'
 import { Character } from './Avatar'
 
-export type LevelUpInfo = { from: number; to: number; profile: Profile | null }
+export type LevelUpInfo = { from: number; to: number; profile: Profile | null; sheets: number }
 
 /** 레벨업 연출: 번쩍 → 빛줄기·색종이·반짝이·물결 속에 캐릭터가 환하게 빛남. 누르거나 5.5초 뒤에 사라짐 */
 export function LevelUpOverlay({ info, onClose }: { info: LevelUpInfo; onClose: () => void }) {
   useEffect(() => {
     haptic([20, 40, 20])
-    const t = setTimeout(onClose, 5500)
+    const t = setTimeout(onClose, 9000)
     return () => clearTimeout(t)
   }, [onClose])
   const name = info.profile?.nickname?.trim() || info.profile?.display_name || '나'
@@ -21,6 +21,9 @@ export function LevelUpOverlay({ info, onClose }: { info: LevelUpInfo; onClose: 
   const colors = ['#ffd166', '#ff7ab3', '#7ad7ff', '#d9376e', '#b5f28a', '#fff']
   return (
     <div className="levelup" role="dialog" aria-label="레벨 업" onClick={onClose}>
+      <button type="button" className="levelup-x" aria-label="닫기" onClick={onClose}>
+        ✕
+      </button>
       <div className="levelup-flash" />
       <div className="levelup-rays" />
       {Array.from({ length: 48 }, (_, i) => (
@@ -48,7 +51,8 @@ export function LevelUpOverlay({ info, onClose }: { info: LevelUpInfo; onClose: 
           <span className="new">Lv.{info.to}</span>
         </div>
         {newTitle && <div className="levelup-title-badge">🏅 {title}가 됐어요!</div>}
-        <div className="levelup-name">{name} · 스텝지 {info.to - 1}장째{title && !newTitle ? ` · ${title}` : ''}</div>
+        <div className="levelup-name">{name} · 스텝지 {info.sheets}장{title && !newTitle ? ` · ${title}` : ''}</div>
+        <div className="levelup-close">아무 데나 누르면 닫혀요</div>
       </div>
     </div>
   )
@@ -78,7 +82,7 @@ export default function LevelUpWatcher() {
           const profile = await getProfile().catch(() => null)
           if (!alive) return
           rememberLevel(uid, lv)
-          setInfo({ from: seen, to: lv, profile })
+          setInfo({ from: seen, to: lv, profile, sheets: n })
         } else if (lv < seen) rememberLevel(uid, lv)
       })
       .catch(() => undefined)
