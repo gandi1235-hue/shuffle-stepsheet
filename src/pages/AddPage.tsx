@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import TopBar from '../components/TopBar'
+import DeepToggle from '../components/DeepToggle'
 import { Sheet as Modal, useToast } from '../components/ui'
 import { haptic } from '../lib/prefs'
 import { Camera, Chevron, Folder as FolderIcon, Music, Photo } from '../components/Icons'
@@ -527,6 +528,7 @@ export default function AddPage() {
             {speech.listening ? `● 녹음 중 ${speech.seconds}초 · 다 말했으면 누르세요` : speech.busy ? '받아 적는 중…' : '🎤 말로 하기'}
           </button>
         )}
+        <DeepToggle />
         <button type="button" className="btn primary block" onClick={applyAsk} disabled={asking || !askText.trim()}>
           {asking ? '고치는 중…' : '이대로 고치기'}
         </button>

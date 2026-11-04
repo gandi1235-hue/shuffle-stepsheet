@@ -12,6 +12,7 @@ import { detectTempo, snapToBeat, type Tempo } from '../lib/tempo'
 import { activeLine, eventsOf, marksFromEvents, savedBpm, savedPlan, withSync, type Folder, type Stepsheet, type SyncEvent, type SyncSource } from '../lib/types'
 import { DEFAULT_BPM, bpmFromEvents, fillEvents, isRest, linesToPlan, orderPromptLines, planIndexOfEvent, planLines, planOf, planText, stepIdxOf, unpinned, type PlanItem } from '../lib/sync'
 import { contactSheets, storyboardSheets } from '../lib/frames'
+import DeepToggle from '../components/DeepToggle'
 
 const fmtT = (x: number) => `${Math.floor(x / 60)}:${Math.floor(x % 60).toString().padStart(2, '0')}`
 const r1 = (x: number) => Math.round(x * 10) / 10
@@ -334,6 +335,7 @@ export default function SyncPage() {
           지금 순서: {orderText}
           {orderNote ? ` · ${orderNote}` : ''}
         </div>
+        <DeepToggle note="빠른 모델로 바로 맞춰요. 영상 보고 맞추기나 복잡한 요청이면 켜 보세요" />
         <div className="video-sync">
           <div className="panel-desc">
             <b>🎬 영상 보고 맞추기 (고도 추론)</b>
@@ -396,7 +398,7 @@ export default function SyncPage() {
                 </>
               ) : (
                 <>
-                  틀린 줄이 있으면 <b>그 줄이 시작되는 순간 그 줄을 누르세요.</b> 그 순간이 그 줄의 시작이 돼요(그 줄만 바뀜). 다 맞으면 저장.
+                  틀린 줄이 있으면 <b>그 줄이 시작되는 순간 그 줄을 누르세요.</b> 그 순간이 그 줄의 시작이 되고 뒤 줄도 같이 옮겨져요(박자는 그대로). 다 맞으면 저장.
                 </>
               )}
             </div>

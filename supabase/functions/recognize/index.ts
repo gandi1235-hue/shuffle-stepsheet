@@ -5,7 +5,8 @@
 //   ANTHROPIC_API_KEY : Claude API 키 (https://console.anthropic.com)
 //   OPENAI_API_KEY    : OpenAI 키 (https://platform.openai.com/api-keys) — 있으면 모든 일(사진 읽기·직접 요청·말로 고치기·아바타·받아 적기)에 GPT를 먼저 씀
 // 글/사진 읽기 우선순위: OpenAI(GPT, 추론 xhigh) → Claude → Gemini. 앞 것이 실패하면 다음 것으로.
-// 선택: OPENAI_TEXT_MODEL (없으면 키로 쓸 수 있는 최신 gpt-5 계열 자동 선택), OPENAI_REASONING (기본 xhigh; 사진 읽기는 OPENAI_PHOTO_REASONING 기본 high, 영상 보고 맞추기는 OPENAI_VIDEO_REASONING 기본 xhigh),
+// 기본은 빠른 미니 모델(추론 low), 앱에서 "고급 추론"을 켜면 가장 좋은 모델(추론 xhigh). 사진 읽기는 항상 가장 좋은 모델(high).
+// 선택: OPENAI_TEXT_MODEL / OPENAI_FAST_MODEL (없으면 키로 쓸 수 있는 최신 gpt-5 계열·미니 자동 선택), OPENAI_REASONING (고급, 기본 xhigh), OPENAI_FAST_REASONING (기본 low), OPENAI_PHOTO_REASONING (기본 high), OPENAI_VIDEO_REASONING (고급 영상, 기본 xhigh),
 //       OPENAI_STT_MODEL (기본 gpt-4o-transcribe), OPENAI_IMAGE_MODEL (기본 gpt-image-1), OPENAI_IMAGE_QUALITY (기본 medium),
 //       GEMINI_MODEL (기본 gemini-2.5-flash), CLAUDE_MODEL (기본 claude-sonnet-5-5)
 
@@ -68,8 +69,9 @@ Deno.serve(async (req) => {
     if (!who) {
       return new Response(JSON.stringify({ error: "로그인이 필요해요" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string }; video_sync?: { frames: { media_type: string; data: string }[]; step: number; duration: number; bpm?: number }; yt_frames?: string };
+    const body = await req.json() as { images?: { media_type: string; data: string }[]; title?: string; order_request?: string; lines?: string[]; avatar?: { media_type: string; data: string }; edit_request?: string; sheet?: { lines: unknown[]; memo?: string }; audio?: { media_type: string; data: string; hint?: string }; video_sync?: { frames: { media_type: string; data: string }[]; step: number; duration: number; bpm?: number }; yt_frames?: string; deep?: boolean };
     const keys = detectKeys();
+    keys.deep = body.deep === true; // 고급 추론(xhigh) 켰는지. 기본은 빠른 모델
     const { gemini: geminiKey, openai: openaiKey } = keys;
 
     // 아바타 모드: { avatar: {media_type, data} } — 사진 속 사람을 귀여운 전신 캐릭터로 (OpenAI 키 있으면 GPT 이미지, 없으면 Gemini 이미지 모델)
@@ -412,13 +414,13 @@ function b64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
-type Keys = { openai?: string; claude?: string; gemini?: string };
+type Keys = { openai?: string; claude?: string; gemini?: string; deep?: boolean };
 type Task = "photo" | "plan" | "edit" | "artist" | "video";
 
 /** 키가 있는 모델을 OpenAI → Claude → Gemini 순으로 시도. 앞 것이 실패하면(모델 없음·한도·시간 초과) 다음 것으로 */
 async function askAI(images: Img[], ask: string, sys: string, keys: Keys, task: Task): Promise<string> {
   const tries: { name: string; run: () => Promise<string> }[] = [];
-  if (keys.openai) tries.push({ name: "openai", run: () => viaOpenAI(images, keys.openai!, ask, sys, task) });
+  if (keys.openai) tries.push({ name: "openai", run: () => viaOpenAI(images, keys.openai!, ask, sys, task, keys.deep === true) });
   if (keys.claude) tries.push({ name: "claude", run: () => viaClaude(images, keys.claude!, ask, sys) });
   if (keys.gemini) tries.push({ name: "gemini", run: () => viaGemini(images, keys.gemini!, ask, sys) });
   if (!tries.length) throw new Error("AI 키가 설정되지 않았습니다 (OPENAI_API_KEY, ANTHROPIC_API_KEY 또는 GEMINI_API_KEY)");
@@ -439,31 +441,43 @@ async function askAI(images: Img[], ask: string, sys: string, keys: Keys, task: 
   throw lastErr ?? new Error("AI 호출 실패");
 }
 
-let openaiModelCache: { key: string; model: string } | null = null;
-/** 쓸 수 있는 가장 좋은 gpt-5 계열 모델. OPENAI_TEXT_MODEL이 있으면 그것 */
-async function openaiModel(key: string): Promise<string> {
-  const forced = Deno.env.get("OPENAI_TEXT_MODEL")?.trim();
-  if (forced) return forced;
-  if (openaiModelCache?.key === key) return openaiModelCache.model;
-  const prefer = ["gpt-5.5", "gpt-5.4", "gpt-5.3", "gpt-5.2", "gpt-5.1", "gpt-5"];
-  let model = "gpt-5";
+let openaiModelCache: { key: string; best: string; fast: string } | null = null;
+/**
+ * 쓸 수 있는 gpt-5 계열 모델: best(가장 좋은 것, 고급 추론·사진 읽기용)와 fast(미니 계열, 기본용).
+ * OPENAI_TEXT_MODEL / OPENAI_FAST_MODEL 환경변수가 있으면 그것
+ */
+async function openaiModels(key: string): Promise<{ best: string; fast: string }> {
+  if (openaiModelCache?.key === key) return openaiModelCache;
+  const preferBest = ["gpt-5.5", "gpt-5.4", "gpt-5.3", "gpt-5.2", "gpt-5.1", "gpt-5"];
+  const preferFast = ["gpt-5.5-mini", "gpt-5.4-mini", "gpt-5.3-mini", "gpt-5.2-mini", "gpt-5.1-mini", "gpt-5-mini"];
+  let best = "gpt-5";
+  let fast = "";
   try {
     const res = await fetch("https://api.openai.com/v1/models", { headers: { Authorization: `Bearer ${key}` } });
     const j = await res.json();
     const ids = new Set(((j.data ?? []) as { id: string }[]).map((m) => m.id));
-    model = prefer.find((m) => ids.has(m)) ?? model;
-    console.log(`[openai] model: ${model}`);
+    best = preferBest.find((m) => ids.has(m)) ?? best;
+    fast = preferFast.find((m) => ids.has(m)) ?? "";
+    console.log(`[openai] models: best=${best} fast=${fast || "(none, use best with low effort)"}`);
   } catch (e) {
     console.error(`[openai] models list failed: ${(e as Error).message}`);
   }
-  openaiModelCache = { key, model };
-  return model;
+  const out = { key, best: Deno.env.get("OPENAI_TEXT_MODEL")?.trim() || best, fast: Deno.env.get("OPENAI_FAST_MODEL")?.trim() || fast || best };
+  openaiModelCache = out;
+  return out;
 }
 
-/** OpenAI Responses API. 추론 세기는 xhigh(사진 읽기는 high) — 모델이 모르는 값이면 한 단계씩 낮춰 재시도 */
-async function viaOpenAI(images: Img[], key: string, ask: string, sys: string, task: Task): Promise<string> {
-  const model = await openaiModel(key);
-  const want = (task === "photo" ? Deno.env.get("OPENAI_PHOTO_REASONING") : task === "video" ? Deno.env.get("OPENAI_VIDEO_REASONING") : Deno.env.get("OPENAI_REASONING"))?.trim() || (task === "photo" ? "high" : "xhigh");
+/**
+ * OpenAI Responses API.
+ * 기본(빠름): 미니 모델 + 추론 low. 고급(deep): 가장 좋은 모델 + xhigh(영상도 xhigh). 사진 읽기는 항상 가장 좋은 모델 + high.
+ * 모델이 모르는 추론 세기면 한 단계씩 낮춰 재시도
+ */
+async function viaOpenAI(images: Img[], key: string, ask: string, sys: string, task: Task, deep: boolean): Promise<string> {
+  const models = await openaiModels(key);
+  const strong = deep || task === "photo";
+  const model = strong ? models.best : models.fast;
+  const envWant = (task === "photo" ? Deno.env.get("OPENAI_PHOTO_REASONING") : task === "video" ? Deno.env.get("OPENAI_VIDEO_REASONING") : Deno.env.get("OPENAI_REASONING"))?.trim();
+  const want = task === "photo" ? envWant || "high" : deep ? envWant || "xhigh" : Deno.env.get("OPENAI_FAST_REASONING")?.trim() || "low";
   const ladder = ["xhigh", "high", "medium", "low"];
   const efforts = [want, ...ladder.slice(Math.max(0, ladder.indexOf(want) + 1))].filter((v, i, a) => a.indexOf(v) === i);
   const content = [

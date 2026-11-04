@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { deepAi } from './prefs'
 import type { Storyboard } from './frames'
 import { normalizeLines, stepNames, type Folder, type Line, type Recognized, type Role, type Song, type Stepsheet, type SyncData } from './types'
 
@@ -536,7 +537,7 @@ export async function transcribe(blob: Blob, hint?: string): Promise<string> {
 
 /** 스텝 내용 고치기: 말로 한 요청("3번 줄 티스텝을 런닝맨 4박으로")대로 AI가 줄을 바꿔 전체 줄을 돌려줌 */
 export async function editLines(lines: Line[], memo: string, request: string): Promise<{ lines: Line[] | null; note: string; unclear: string }> {
-  const { data, error } = await supabase.functions.invoke('recognize', { body: { edit_request: request, sheet: { lines, memo } } })
+  const { data, error } = await supabase.functions.invoke('recognize', { body: { edit_request: request, sheet: { lines, memo }, deep: deepAi() } })
   if (error) throw new Error('요청을 이해하지 못했어요. 다시 적어 주세요.')
   if (data?.error) throw new Error(data.error)
   return { lines: Array.isArray(data?.lines) ? normalizeLines(data.lines) : null, note: String(data?.note ?? ''), unclear: String(data?.unclear ?? '') }
@@ -548,7 +549,7 @@ export async function editLines(lines: Line[], memo: string, request: string): P
  */
 export type PlanReply = { plan: ({ line: number; beats?: number; at?: number } | { rest: number })[]; note: string; startAt: number | null; bpm: number | null; unclear: string }
 export async function planRequest(lines: string[], request: string): Promise<PlanReply> {
-  const { data, error } = await supabase.functions.invoke('recognize', { body: { order_request: request, lines } })
+  const { data, error } = await supabase.functions.invoke('recognize', { body: { order_request: request, lines, deep: deepAi() } })
   if (error) throw new Error('요청을 이해하지 못했어요. 다시 적어 주세요.')
   if (data?.error) throw new Error(data.error)
   return parsePlan(data, lines.length)
@@ -558,7 +559,7 @@ export async function planRequest(lines: string[], request: string): Promise<Pla
  * 영상은 올리지 않고 장면표 그림만 보낸다. 1~3분 걸릴 수 있다.
  */
 export async function videoSync(sheets: { media_type: string; data: string }[], lines: string[], bpm: number, step: number, duration: number): Promise<PlanReply> {
-  const { data, error } = await supabase.functions.invoke('recognize', { body: { video_sync: { frames: sheets, step, duration, bpm }, lines } })
+  const { data, error } = await supabase.functions.invoke('recognize', { body: { video_sync: { frames: sheets, step, duration, bpm }, lines, deep: deepAi() } })
   if (error) throw new Error('영상을 읽지 못했어요. 영상이 길면 시간이 모자랄 수 있어요. 한 번 더 해 보세요.')
   if (data?.error) throw new Error(data.error)
   return parsePlan(data, lines.length)

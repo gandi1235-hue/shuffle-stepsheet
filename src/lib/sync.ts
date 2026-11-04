@@ -124,7 +124,7 @@ export function orderPromptLines(sheet: Lines): string[] {
   sheet.lines.forEach((l, i) => {
     if (kindOf(l) === 'section') section = l.label ?? ''
     const k = idx.indexOf(i)
-    if (k >= 0) out.push(`${k + 1}. ${section ? `[${section}] ` : ''}${l.steps.map((s) => `${s.name}${s.beats ? ' ' + s.beats : ''}`).join(' / ')} (${lineBeats(sheet, i)}박)`)
+    if (k >= 0) out.push(`${k + 1}. ${section ? `[${section}] ` : ''}${l.steps.map((s) => `${s.name}${s.beats ? ' ' + s.beats : ''}`).join(' / ')} (${lineBeats(sheet, i)}박${l.steps.some((s) => beatsOf(s.beats) > 0) ? '' : ', 안 적혀 있어 8박으로 추정'})`)
   })
   return out
 }

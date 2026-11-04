@@ -7,6 +7,8 @@ export interface Prefs {
   contrast: boolean
   /** 영상과 스텝 배치: 위아래 / 좌우. 없으면 화면 너비에 따라 자동 */
   videoLayout?: VideoLayout
+  /** AI 고급 추론: 켜면 가장 좋은 모델로 오래 생각(느리지만 똑똑). 기본은 빠른 모델 */
+  deepAi?: boolean
 }
 const KEY = 'prefs'
 const DEFAULT: Prefs = { font: 'normal', contrast: false }
@@ -72,3 +74,5 @@ export function useMedia(q: string): boolean {
   }, [q])
   return m
 }
+/** AI 고급 추론을 켰는지 (API 호출 때 같이 보냄) */
+export const deepAi = () => loadPrefs().deepAi === true
