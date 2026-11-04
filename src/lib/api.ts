@@ -2,9 +2,14 @@ import { supabase } from './supabase'
 import { normalizeLines, stepNames, type Folder, type Recognized, type Role, type Song, type Stepsheet } from './types'
 
 export async function listFolders(): Promise<Folder[]> {
+  // 내 멤버 줄만! (공유 폴더는 다른 멤버의 줄도 읽을 수 있어서, 안 거르면 같은 폴더가 멤버 수만큼 나오고 권한도 남의 것이 보였음)
+  const { data: auth } = await supabase.auth.getSession()
+  const uid = auth.session?.user.id
+  if (!uid) return []
   const { data: members, error } = await supabase
     .from('folder_members')
     .select('role, folders(id, name, kind, owner_id, invite_code)')
+    .eq('user_id', uid)
   if (error) throw error
   const folders: Folder[] = (members ?? []).map((m) => {
     const f = m.folders as unknown as Folder
