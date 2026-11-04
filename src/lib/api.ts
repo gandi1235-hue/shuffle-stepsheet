@@ -329,3 +329,14 @@ export async function copySheet(id: string, targetFolderId: string): Promise<Ste
     photoFiles,
   })
 }
+
+/** 다른 폴더로 옮기기 = 복사한 뒤 원본(글·음원·사진) 지우기 */
+export async function moveSheet(id: string, targetFolderId: string): Promise<Stepsheet> {
+  const src = await getSheet(id)
+  if (!src) throw new Error('스텝지를 찾을 수 없어요')
+  const saved = await copySheet(id, targetFolderId)
+  await deleteSheet(id)
+  if (src.audio_path) await supabase.storage.from('audio').remove([src.audio_path])
+  if (src.photo_paths?.length) await supabase.storage.from('photos').remove(src.photo_paths)
+  return saved
+}

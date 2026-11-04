@@ -5,7 +5,7 @@ import { haptic } from '../lib/prefs'
 import SongList from '../components/SongList'
 import { createSharedFolder, joinFolder, listFolders, listSongs, searchSheets, type SongWithSheets } from '../lib/api'
 import type { Folder, Stepsheet } from '../lib/types'
-import { Back, Camera, Folder as FolderIcon, Music, People, Plus, Search, Shared, Brand } from '../components/Icons'
+import { Back, Camera, Edit, Folder as FolderIcon, Music, People, Plus, Search, Shared, Brand } from '../components/Icons'
 
 const roleKo = { owner: '주인', editor: '편집자', viewer: '보기' }
 const SEL = 'selected-folder'
@@ -118,11 +118,16 @@ export default function Home() {
                 <div className="label">
                   {folder.kind === 'shared' ? `공유 폴더 · 내 권한 ${roleKo[folder.role ?? 'viewer']}` : '내 개인 폴더'} · {songs?.length ?? folder.song_count ?? 0}곡
                 </div>
-                {folder.kind === 'shared' && (
-                  <Link to={`/folder/${folder.id}/members`} className="btn pill" style={{ minHeight: 34 }}>
-                    <People /> 멤버
+                <span className="row-btns">
+                  {folder.kind === 'shared' && (
+                    <Link to={`/folder/${folder.id}/members`} className="btn pill" style={{ minHeight: 34 }}>
+                      <People /> 멤버
+                    </Link>
+                  )}
+                  <Link to={`/folder/${folder.id}/edit`} className="btn pill" style={{ minHeight: 34 }} aria-label="폴더 편집">
+                    <Edit /> 편집
                   </Link>
-                )}
+                </span>
               </div>
             )}
 

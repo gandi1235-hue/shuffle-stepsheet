@@ -23,22 +23,28 @@ export default function AddPage() {
   const [texts, setTexts] = useState<Record<number, string>>({})
   const [audioFile, setAudioFile] = useState<File | null>(null)
   const [audioUrl, setAudioUrl] = useState('')
+  const [hasAudioPath, setHasAudioPath] = useState(false)
+  const [hasSync, setHasSync] = useState(false)
   const [err, setErr] = useState('')
   const camRef = useRef<HTMLInputElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const toast = useToast()
+  const hasAudio = hasAudioPath || Boolean(audioFile) || Boolean(audioUrl.trim())
 
   useEffect(() => {
     listFolders().then((fs) => {
       const editable = fs.filter((f) => f.role === 'owner' || f.role === 'editor')
       setFolders(editable)
-      if (!folderId && editable[0]) setFolderId(editable[0].id)
+      // 편집 중엔 원래 폴더를 그대로 둔다 (예전엔 여기서 첫 폴더로 바뀌어 스텝지가 개인 폴더로 옮겨지는 버그가 있었음)
+      if (!editId) setFolderId((cur) => cur || editable[0]?.id || '')
     })
     if (editId)
       getSheet(editId).then((s) => {
         if (!s) return
         setFolderId(s.folder_id)
         setAudioUrl(s.audio_url ?? '')
+        setHasAudioPath(Boolean(s.audio_path))
+        setHasSync(Boolean(s.sync?.some((v) => typeof v === 'number')))
         setData({
           title: s.song?.title ?? '',
           artist: s.song?.artist ?? '',
@@ -333,13 +339,23 @@ export default function AddPage() {
         </div>
 
         <div className="field">
-          <label htmlFor="au">음원 파일 (MP3 등, 내가 가진 파일)</label>
-          <input id="au" type="file" accept="audio/*" onChange={(e) => setAudioFile(e.target.files?.[0] ?? null)} />
+          <label htmlFor="au">음원·영상 파일 (MP3, MP4 등 내가 가진 파일)</label>
+          <input id="au" type="file" accept="audio/*,video/*" onChange={(e) => setAudioFile(e.target.files?.[0] ?? null)} />
         </div>
         <div className="field">
-          <label htmlFor="al">또는 음원 링크 (유튜브 등)</label>
+          <label htmlFor="al">유튜브 링크 (파일과 함께 넣어도 돼요 · 앱 안에서 스텝지와 같이 봐요)</label>
           <input id="al" type="url" value={audioUrl} onChange={(e) => setAudioUrl(e.target.value)} placeholder="https://" />
         </div>
+
+        {editId && (
+          <div className="field">
+            <label>노래 동기화</label>
+            <button type="button" className="btn block" onClick={() => nav(`/sheet/${editId}/sync`)} disabled={!hasAudio}>
+              {hasSync ? '동기화 교정하기' : '노래와 줄 맞추기 (동기화)'}
+            </button>
+            <div className="edittip">{hasAudio ? '재생하면서 1번 줄이 시작될 때 한 번만 누르면, 박자를 분석해 나머지 줄을 자동으로 맞춰요. 틀린 줄만 고치면 돼요.' : '음원 파일이나 유튜브 링크를 넣고 저장한 뒤 동기화할 수 있어요.'}</div>
+          </div>
+        )}
 
         <div className="field">
           <label htmlFor="fo">저장할 폴더</label>

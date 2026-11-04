@@ -9,10 +9,10 @@
   --soft: #eef0f4;
   --panel: #f7f8fa;
   --accent: #e50914;
-  --accent-dark: #b20710;
+  --accent-dark: #b81d24;
   --accent-soft: #fdecec;
   --accent-ink: #a3080f;
-  --grad: linear-gradient(135deg, #e50914 0%, #d2070f 100%);
+  --grad: linear-gradient(150deg, #e50914 0%, #c40812 55%, #b81d24 100%);
   --grad-dark: linear-gradient(150deg, #0a0a0b 0%, #161618 55%, #232327 100%);
   --warn-bg: #fff4d6;
   --warn-line: #f0b429;
@@ -135,6 +135,18 @@ button.card { width: 100%; font: inherit; text-align: left; cursor: pointer; }
 .player input[type=range] { width: 100%; accent-color: var(--accent); height: 28px; margin: 0; }
 .player .tools { display: flex; gap: 8px; }
 .player .tools .btn { flex: 1; min-height: 40px; font-size: 14px; border-radius: 10px; }
+.player .speed { flex: 1.3; display: flex; align-items: center; gap: 4px; }
+.player .speed .btn { flex: 0 0 40px; min-width: 40px; padding: 0; font-size: 20px; }
+.player .speed span { flex: 1; text-align: center; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.player.has-video { padding-top: 0; overflow: hidden; }
+.player .screen-video { width: calc(100% + 28px); margin: 0 -14px 4px; max-height: 38vh; background: #000; display: block; object-fit: contain; }
+.player .yt-box { margin: 0 -14px 4px; background: #000; aspect-ratio: 16 / 9; max-height: 38vh; }
+.player .yt-box iframe { width: 100%; height: 100%; display: block; }
+.player.yt .play { font-size: 16px; color: #fff; }
+.syncbar .bpm { flex: 1; display: flex; align-items: center; gap: 4px; }
+.syncbar .bpm .btn { flex: 0 0 44px; padding: 0; font-size: 20px; }
+.syncbar .bpm span { flex: 1; text-align: center; font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; display: flex; flex-direction: column; line-height: 1; }
+.syncbar .bpm small { font-size: 10px; font-weight: 700; opacity: 0.7; letter-spacing: 0.1em; }
 
 /* ── 입력 ── */
 .field { display: flex; flex-direction: column; gap: 6px; }
@@ -223,8 +235,8 @@ button.card { width: 100%; font: inherit; text-align: left; cursor: pointer; }
 .form-body .line.rest .main::before { content: '— '; } .form-body .line.rest .main::after { content: ' —'; }
 .form-body .line.tap { cursor: pointer; }
 .form-body .line.now { background: #fff8e1; box-shadow: inset 4px 0 0 var(--accent); }
-.form-body .line.now .no { color: var(--accent); }
-.form-body .line .mark { grid-column: 3; align-self: start; margin: 10px 10px 0 0; font-size: 11.5px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; border: 1px solid currentColor; border-radius: 6px; padding: 1px 5px; }
+.form-body .line.now .no, .form-body .line.now .mark { color: var(--accent); }
+.form-body .line .mark { grid-column: 3; align-self: start; margin: 10px 10px 0 0; font-size: 11.5px; font-weight: 700; color: var(--dim); font-variant-numeric: tabular-nums; border: 1px solid currentColor; border-radius: 6px; padding: 1px 5px; }
 .form-body .line .mark.empty { color: var(--faint); }
 .form-body .line:has(.mark) { grid-template-columns: 34px 1fr auto; }
 .syncbar { position: sticky; bottom: 0; margin: 0 8px; padding: 12px 14px calc(14px + env(safe-area-inset-bottom)); border: 1px solid var(--line); border-bottom: 0; border-radius: 20px 20px 0 0; background: var(--fg); color: var(--bg); display: flex; flex-direction: column; gap: 10px; box-shadow: 0 -8px 28px -14px rgba(0,0,0,0.4); }
@@ -302,7 +314,7 @@ button.card { width: 100%; font: inherit; text-align: left; cursor: pointer; }
 .song-group { display: flex; flex-direction: column; gap: 8px; }
 .song > button .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .song .title { font-size: 15.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.song .title .count { color: var(--accent); font-weight: 700; }
+.song .title .count { color: var(--fg); font-weight: 600; }
 .song .ver .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .song .ver svg { width: 18px; height: 18px; color: var(--line-strong); }
 .song.open > button .ico { background: var(--grad); color: #fff; }
@@ -456,3 +468,19 @@ html[data-contrast="high"] .btn, html[data-contrast="high"] .card, html[data-con
 .update span { flex: 1; }
 .update .btn { min-height: 34px; font-size: 13.5px; padding: 0 12px; border-color: transparent; color: var(--fg); }
 .update .iconbtn { width: 36px; height: 36px; color: #fff; }
+
+/* 폴더 화면의 멤버·편집 버튼 묶음 */
+.row-btns { display: inline-flex; gap: 6px; }
+
+/* 노래 동기화 화면: 안내 패널과 재생기를 한 덩어리로 바닥에 붙임 */
+.sync-content { padding-bottom: 12px; }
+.sync-dock { position: sticky; bottom: 0; z-index: 5; }
+.sync-dock .syncbar, .sync-dock .player { position: static; }
+.sync-dock .player { border-radius: 0; border-top: 0; margin: 0 8px; }
+.sync-status { font-size: 12.5px; font-weight: 700; color: #ffd54a; letter-spacing: -0.01em; }
+.sync-status.running { color: rgba(255,255,255,0.75); }
+.sync-status.failed, .sync-status.na, .sync-status.weak { color: #ffb4a8; }
+.syncbar .row .btn:disabled { opacity: 0.4; }
+.sync-switch { background: none; border: 0; color: #fff; text-decoration: underline; font-size: 13px; padding: 2px 0; align-self: flex-start; cursor: pointer; }
+.player .btn.sync { flex: 1.2; }
+.player .btn.sync.on { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }

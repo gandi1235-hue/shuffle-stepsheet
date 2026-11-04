@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import Player, { type PlayerHandle } from '../components/Player'
+import Player, { isVideoSrc, type PlayerHandle } from '../components/Player'
+import YouTubePlayer, { youtubeId } from '../components/YouTubePlayer'
 import SheetTable from '../components/SheetTable'
 import TopBar from '../components/TopBar'
 import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
 import { Copy, Doc, Edit, More, Photo, Print, Share } from '../components/Icons'
-import { copySheet, getFolder, getSheet, listFolders, signedUrl, updateMemo, updateSync } from '../lib/api'
-import { kindOf, type Folder, type Stepsheet } from '../lib/types'
+import { copySheet, getFolder, getSheet, listFolders, moveSheet, signedUrl, updateMemo, updateSync } from '../lib/api'
+import type { Folder, Stepsheet } from '../lib/types'
 
 export default function SheetPage() {
   const { id = '' } = useParams()
@@ -17,19 +18,15 @@ export default function SheetPage() {
   const [photos, setPhotos] = useState<string[]>([])
   const [showPhotos, setShowPhotos] = useState(false)
   const [big, setBig] = useState(false)
-  const [menu, setMenu] = useState<null | 'more' | 'copy'>(null)
+  const [menu, setMenu] = useState<null | 'more' | 'copy' | 'move'>(null)
   const [docView, setDocView] = useState(false)
   const [folders, setFolders] = useState<Folder[]>([])
-  const [copying, setCopying] = useState(false)
+  const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const toast = useToast()
-  // 노래 동기화
   const player = useRef<PlayerHandle | null>(null)
   const [t, setT] = useState(0)
-  const [syncing, setSyncing] = useState(false)
-  const [marks, setMarks] = useState<(number | null)[]>([])
-  const [cursor, setCursor] = useState(0)
-  const [savingSync, setSavingSync] = useState(false)
+  const [source, setSource] = useState<'file' | 'youtube'>('file')
 
   useEffect(() => {
     getSheet(id)
@@ -62,95 +59,66 @@ export default function SheetPage() {
     )
 
   const canEdit = folder?.role === 'owner' || folder?.role === 'editor'
-  const isExternal = !sheet.audio_path && Boolean(sheet.audio_url)
+  const ytId = sheet.audio_url ? youtubeId(sheet.audio_url) : null
+  const hasFile = Boolean(sheet.audio_path && audio)
+  const playingYt = Boolean(ytId) && (!hasFile || source === 'youtube')
+  const hasPlayer = hasFile || Boolean(ytId)
+  const isExternal = !hasFile && Boolean(sheet.audio_url) && !ytId
+  const fileIsVideo = Boolean(sheet.audio_path && isVideoSrc(sheet.audio_path))
 
-  // 동기화: 스텝 줄들의 lines 인덱스
-  const stepIdx = sheet.lines.map((l, i) => (kindOf(l) === 'steps' && l.steps.some((st) => st.name.trim()) ? i : -1)).filter((i) => i >= 0)
-  const saved = (sheet.sync ?? []) as (number | null)[]
-  const hasSync = saved.some((v) => typeof v === 'number')
-  const useMarks = syncing ? marks : saved
+  // 노래 동기화(저장된 줄별 시각): 재생 중인 줄 표시, 줄을 누르면 그 자리로 이동
+  const marks = (sheet.sync ?? []) as (number | null)[]
+  const hasSync = marks.some((v) => typeof v === 'number')
   const activeIndex = (() => {
-    if (!audio || isExternal) return undefined
+    if (!hasPlayer || !hasSync) return undefined
     let best: number | undefined
-    useMarks.forEach((v, i) => {
+    marks.forEach((v, i) => {
       if (typeof v === 'number' && v <= t + 0.05) best = i
     })
     return best
   })()
-  const startSync = () => {
-    setMarks(sheet.lines.map(() => null))
-    setCursor(0)
-    setSyncing(true)
-    setDocView(false)
-    player.current?.seek(0, true)
-  }
-  const markNext = () => {
-    if (cursor >= stepIdx.length) return
-    const now = player.current?.time() ?? 0
-    const m = [...marks]
-    m[stepIdx[cursor]] = Math.round(now * 10) / 10
-    setMarks(m)
-    setCursor(cursor + 1)
-    if (cursor + 1 >= stepIdx.length) player.current?.pause()
-  }
-  const undoMark = () => {
-    if (cursor === 0) return
-    const m = [...marks]
-    const prevT = m[stepIdx[cursor - 1]]
-    m[stepIdx[cursor - 1]] = null
-    setMarks(m)
-    setCursor(cursor - 1)
-    // 그 줄 조금 앞으로 되감아서 다시 찍기
-    if (typeof prevT === 'number') player.current?.seek(Math.max(0, prevT - 3), true)
-  }
-  const saveSync = async () => {
-    setSavingSync(true)
-    try {
-      await updateSync(sheet.id, marks)
-      setSheet({ ...sheet, sync: marks })
-      setSyncing(false)
-      toast('동기화를 저장했어요. 재생하면 현재 줄이 표시돼요')
-    } catch (e) {
-      toast((e as Error).message)
-    } finally {
-      setSavingSync(false)
-    }
-  }
-  const cancelSync = () => {
-    setSyncing(false)
-    player.current?.pause()
-  }
   const onLine = (i: number) => {
-    const v = useMarks[i]
+    const v = marks[i]
     if (typeof v === 'number') player.current?.seek(v, true)
   }
+  const clearSync = async () => {
+    if (!confirm('저장된 노래 동기화를 지울까요?')) return
+    try {
+      await updateSync(sheet.id, null)
+      setSheet({ ...sheet, sync: null })
+      toast('동기화를 지웠어요')
+    } catch (e) {
+      toast((e as Error).message)
+    }
+  }
 
-  const openCopy = async () => {
+  const openFolders = async (mode: 'copy' | 'move') => {
     const fs = await listFolders()
     setFolders(fs.filter((f) => (f.role === 'owner' || f.role === 'editor') && f.id !== sheet.folder_id))
-    setMenu('copy')
+    setMenu(mode)
   }
-  const doCopy = async (f: Folder) => {
-    setCopying(true)
+  const doCopyOrMove = async (f: Folder) => {
+    const move = menu === 'move'
+    setBusy(true)
     try {
-      const saved = await copySheet(sheet.id, f.id)
+      const saved = move ? await moveSheet(sheet.id, f.id) : await copySheet(sheet.id, f.id)
       setMenu(null)
-      toast(`"${f.name}" 폴더에 복사했어요`)
-      nav(`/sheet/${saved.id}`)
+      toast(move ? `"${f.name}" 폴더로 옮겼어요` : `"${f.name}" 폴더에 복사했어요`)
+      nav(`/sheet/${saved.id}`, { replace: move })
     } catch (e) {
       toast((e as Error).message)
     } finally {
-      setCopying(false)
+      setBusy(false)
     }
   }
 
   const editMemo = async () => {
-    const memo = prompt('메모 (예: Y스텝시 손동작 있음)', sheet.memo ?? '')
+    const memo = prompt('비고 (예: Y스텝시 손동작 있음)', sheet.memo ?? '')
     if (memo === null) return
     try {
       await updateMemo(sheet.id, memo.trim())
       setSheet({ ...sheet, memo: memo.trim() })
-      toast(memo.trim() ? '메모를 저장했어요' : '메모를 지웠어요')
+      toast(memo.trim() ? '비고를 저장했어요' : '비고를 지웠어요')
     } catch (e) {
       toast((e as Error).message)
     }
@@ -165,6 +133,13 @@ export default function SheetPage() {
       toast('링크를 복사했어요. 카카오톡에 붙여 넣으세요.')
     }
   }
+
+  const syncBtn =
+    canEdit && hasPlayer ? (
+      <button type="button" className={hasSync ? 'btn sync on' : 'btn sync'} onClick={() => nav(`/sheet/${sheet.id}/sync`)}>
+        {hasSync ? '동기화 교정' : '노래 동기화'}
+      </button>
+    ) : undefined
 
   return (
     <div className="screen sheet-screen">
@@ -203,26 +178,34 @@ export default function SheetPage() {
           <span className="ico"><Share /></span>
           <span className="grow"><b>링크 공유</b><span>카카오톡 등으로 이 스텝지 링크를 보내요</span></span>
         </button>
-        {audio && !isExternal && canEdit && (
-          <button type="button" className="menu-item" onClick={() => { setMenu(null); startSync() }}>
-            {hasSync ? '노래 동기화 다시 하기' : '노래 동기화 (줄마다 시간 찍기)'}
+        {hasFile && ytId && (
+          <button type="button" className="menu-item" onClick={() => { setMenu(null); setSource(source === 'file' ? 'youtube' : 'file') }}>
+            <span className="ico"><Doc /></span>
+            <span className="grow"><b>{source === 'file' ? '유튜브 영상으로 보기' : '올린 파일로 듣기'}</b><span>음원 파일과 유튜브 링크가 둘 다 있어요</span></span>
+          </button>
+        )}
+        <button type="button" className="menu-item" onClick={() => openFolders('copy')}>
+          <span className="ico"><Copy /></span>
+          <span className="grow"><b>다른 폴더로 복사</b><span>원본은 그대로 두고 복사본을 만들어요</span></span>
+        </button>
+        {canEdit && (
+          <button type="button" className="menu-item" onClick={() => openFolders('move')}>
+            <span className="ico"><Copy /></span>
+            <span className="grow"><b>다른 폴더로 옮기기</b><span>이 폴더에서는 사라지고 저쪽 폴더로 가요</span></span>
           </button>
         )}
         {hasSync && canEdit && (
-          <button type="button" className="menu-item" onClick={async () => { setMenu(null); await updateSync(sheet.id, null); setSheet({ ...sheet, sync: null }); toast('동기화를 지웠어요') }}>
-            동기화 지우기
+          <button type="button" className="menu-item" onClick={() => { setMenu(null); clearSync() }}>
+            <span className="ico">✕</span>
+            <span className="grow"><b>동기화 지우기</b><span>저장된 줄별 시각을 지워요</span></span>
           </button>
         )}
-        <button type="button" className="menu-item" onClick={openCopy}>
-          <span className="ico"><Copy /></span>
-          <span className="grow"><b>다른 폴더로 복사</b><span>내 스텝지를 공유 폴더에 붙여 넣어요</span></span>
-        </button>
       </Modal>
-      <Modal open={menu === 'copy'} title="어느 폴더로 복사할까요?" onClose={() => setMenu(null)}>
-        {folders.length === 0 && <div className="notice">복사할 수 있는 폴더가 없어요. 편집 권한이 있는 다른 폴더가 필요해요.</div>}
+      <Modal open={menu === 'copy' || menu === 'move'} title={menu === 'move' ? '어느 폴더로 옮길까요?' : '어느 폴더로 복사할까요?'} onClose={() => setMenu(null)}>
+        {folders.length === 0 && <div className="notice">보낼 수 있는 폴더가 없어요. 편집 권한이 있는 다른 폴더가 필요해요.</div>}
         {folders.map((f) => (
-          <button type="button" className="menu-item" key={f.id} disabled={copying} onClick={() => doCopy(f)}>
-            <span className="grow"><b>{f.name}</b><span>{f.kind === 'shared' ? '공유 폴더' : '내 폴더'}{copying ? ' · 복사 중…' : ''}</span></span>
+          <button type="button" className="menu-item" key={f.id} disabled={busy} onClick={() => doCopyOrMove(f)}>
+            <span className="grow"><b>{f.name}</b><span>{f.kind === 'shared' ? '공유 폴더' : '내 폴더'}{busy ? ' · 처리 중…' : ''}</span></span>
           </button>
         ))}
       </Modal>
@@ -241,40 +224,12 @@ export default function SheetPage() {
       ) : (
         <FitBox big={big} setBig={setBig}>
           <h2 className="print-title">셔플댄스 스텝지</h2>
-          <SheetTable title={sheet.song?.title ?? ''} artist={sheet.song?.artist ?? ''} creator={sheet.creator_name} creatorInfo={sheet.creator_info} lines={sheet.lines} memo={sheet.memo} big={big} onMemo={canEdit ? editMemo : undefined} activeIndex={activeIndex} onLine={hasSync || syncing ? onLine : undefined} marks={syncing ? marks : undefined} />
+          <SheetTable title={sheet.song?.title ?? ''} artist={sheet.song?.artist ?? ''} creator={sheet.creator_name} creatorInfo={sheet.creator_info} lines={sheet.lines} memo={sheet.memo} big={big} onMemo={canEdit ? editMemo : undefined} activeIndex={activeIndex} onLine={hasSync ? onLine : undefined} />
         </FitBox>
       )}
 
-      {syncing && (
-        <div className="syncbar no-print">
-          <div className="sync-hint">
-            {cursor < stepIdx.length ? (
-              <>
-                노래가 흐르는 중 <b>{cursor + 1}번 줄</b>이 시작되는 순간 <b>다음 줄</b>을 누르세요. ({cursor}/{stepIdx.length} 찍음)
-              </>
-            ) : (
-              <>모든 줄을 찍었어요. 저장을 누르세요.</>
-            )}
-          </div>
-          <div className="row">
-            <button type="button" className="btn" onClick={undoMark} disabled={cursor === 0}>
-              되돌리기
-            </button>
-            <button type="button" className="btn next" onClick={markNext} disabled={cursor >= stepIdx.length}>
-              다음 줄 ({cursor + 1})
-            </button>
-          </div>
-          <div className="row">
-            <button type="button" className="btn" onClick={cancelSync}>
-              취소
-            </button>
-            <button type="button" className="btn save" onClick={saveSync} disabled={savingSync || cursor === 0}>
-              {savingSync ? '저장 중…' : '동기화 저장'}
-            </button>
-          </div>
-        </div>
-      )}
-      {audio && !isExternal && <Player src={audio} name={sheet.song?.title ?? ''} onTime={setT} handle={player} />}
+      {playingYt && ytId && <YouTubePlayer videoId={ytId} name={sheet.song?.title ?? ''} onTime={setT} handle={player} extra={syncBtn} />}
+      {hasFile && !playingYt && <Player src={audio} name={sheet.song?.title ?? ''} video={fileIsVideo} onTime={setT} handle={player} extra={syncBtn} />}
       {isExternal && (
         <div className="bottom no-print">
           <a className="btn block" href={sheet.audio_url!} target="_blank" rel="noreferrer">

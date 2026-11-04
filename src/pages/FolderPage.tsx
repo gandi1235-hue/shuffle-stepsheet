@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import SongList from '../components/SongList'
 import TopBar from '../components/TopBar'
-import { People, Plus, Search } from '../components/Icons'
+import { Edit, People, Plus, Search } from '../components/Icons'
 import { getFolder, listSongs, type SongWithSheets } from '../lib/api'
 import { stepNames, type Folder } from '../lib/types'
 
@@ -39,11 +39,16 @@ export default function FolderPage() {
         sub={folder ? `${folder.kind === 'shared' ? '공유 폴더' : '개인 폴더'} · ${songs.length}곡` : undefined}
         back="/library"
         right={
-          folder?.kind === 'shared' ? (
-            <Link to={`/folder/${id}/members`} className="btn pill" style={{ minHeight: 38 }}>
-              <People /> 멤버·관리
+          <span className="row-btns">
+            {folder?.kind === 'shared' && (
+              <Link to={`/folder/${id}/members`} className="btn pill" style={{ minHeight: 38 }}>
+                <People /> 멤버
+              </Link>
+            )}
+            <Link to={`/folder/${id}/edit`} className="btn pill" style={{ minHeight: 38 }}>
+              <Edit /> 편집
             </Link>
-          ) : undefined
+          </span>
         }
       />
       <div className="content" style={{ paddingBottom: 100 }}>
