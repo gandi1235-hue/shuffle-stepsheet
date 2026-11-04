@@ -184,7 +184,10 @@ h1, h2, h3 { letter-spacing: -0.015em; }
 .login .mark svg { width: 34px; height: 34px; }
 .login h1 { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.03em; }
 .login p { margin: 6px 0 0; color: var(--muted); font-size: 16px; }
-.kakao { background: #fee500; border-color: #fee500; color: #191919; }
+.kakao { background: #fee500; border-color: #fee500; color: #191919; font-weight: 700; }
+.kakao:hover { background: #f5dc00; }
+.or { text-align: center; color: var(--faint); font-size: 13px; display: flex; align-items: center; gap: 12px; }
+.or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line-strong); }
 
 /* ── 스텝지 양식 (협회 양식: 머리말 표 + 번호 줄) ── */
 .form { display: flex; flex-direction: column; gap: 10px; --ink: #0f172a; --rule: #e3e6ec; }
