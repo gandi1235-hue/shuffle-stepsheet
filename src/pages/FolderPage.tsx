@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import SongList from '../components/SongList'
 import TopBar from '../components/TopBar'
+import HelpButton from '../components/HelpButton'
 import { Chat, Edit, People, Plus, Search } from '../components/Icons'
 import { getFolder, listSongs, type SongWithSheets, unreadCounts } from '../lib/api'
 import { stepNames, type Folder } from '../lib/types'
@@ -55,6 +56,7 @@ export default function FolderPage() {
             <Link to={`/folder/${id}/edit`} className="btn pill" style={{ minHeight: 38 }}>
               <Edit /> 편집
             </Link>
+            <HelpButton page="folder" />
           </span>
         }
       />

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import TopBar from '../components/TopBar'
+import HelpButton from '../components/HelpButton'
 import { Sheet as Modal, useToast } from '../components/ui'
 import { deleteMessage, getFolder, listMembers, listMessages, markRead, sendMessage, subscribeMessages, type Member, type Message } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -95,7 +96,7 @@ export default function ChatPage() {
 
   return (
     <div className="screen chat-screen">
-      <TopBar title={`${folder?.name ?? ''} 톡`} sub={`멤버 ${Object.keys(members).length}명`} back={`/folder/${id}`} right={<Link to={`/folder/${id}/members`} className="btn pill" style={{ minHeight: 38 }}>멤버</Link>} />
+      <TopBar title={`${folder?.name ?? ''} 톡`} sub={`멤버 ${Object.keys(members).length}명`} back={`/folder/${id}`} right={<><Link to={`/folder/${id}/members`} className="btn pill" style={{ minHeight: 38 }}>멤버</Link><HelpButton page="chat" /></>} />
       <div className="chat-list" ref={list}>
         {err && <div className="error">{err}</div>}
         {msgs.length === 0 && !err && <div className="empty">아직 메시지가 없어요. 첫 인사를 남겨 보세요.</div>}

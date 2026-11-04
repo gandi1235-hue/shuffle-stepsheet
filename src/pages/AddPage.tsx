@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import TopBar from '../components/TopBar'
+import HelpButton from '../components/HelpButton'
 import DeepToggle from '../components/DeepToggle'
 import { Sheet as Modal, useToast } from '../components/ui'
 import { haptic } from '../lib/prefs'
@@ -301,7 +302,7 @@ export default function AddPage() {
   if (stage === 'photo' || stage === 'recognizing')
     return (
       <div className="screen">
-        <TopBar title="스텝지 추가" sub="1 / 3 · 사진 고르기" back="/" />
+        <TopBar title="스텝지 추가" sub="1 / 3 · 사진 고르기" back="/" right={<HelpButton page="add" />} />
         <div className="content">
           <div className="steps-bar">
             <div className="on" />
@@ -415,7 +416,7 @@ export default function AddPage() {
 
   return (
     <div className="screen">
-      <TopBar title={editId ? '스텝지 수정' : '인식 결과 확인'} sub={editId ? undefined : '2 / 3 · 틀린 칸 고치기'} back />
+      <TopBar title={editId ? '스텝지 수정' : '인식 결과 확인'} sub={editId ? undefined : '2 / 3 · 틀린 칸 고치기'} back right={<HelpButton page="edit" />} />
       <div className="content">
         {!editId && (
           <div className="steps-bar">

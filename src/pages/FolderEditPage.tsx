@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import TopBar from '../components/TopBar'
+import HelpButton from '../components/HelpButton'
 import { useToast } from '../components/ui'
 import { deleteFolder, getFolder, leaveFolder, listMembers, renameFolder } from '../lib/api'
 import type { Folder } from '../lib/types'
@@ -82,7 +83,7 @@ export default function FolderEditPage() {
 
   return (
     <div className="screen">
-      <TopBar title="폴더 편집" sub={folder?.name} back={`/folder/${id}`} />
+      <TopBar title="폴더 편집" sub={folder?.name} back={`/folder/${id}`} right={<HelpButton page="folderEdit" />} />
       <div className="content">
         {err && <div className="error">{err}</div>}
 

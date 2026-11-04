@@ -1,3 +1,4 @@
+import HelpButton from '../components/HelpButton'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { EmptyState, Sheet, Skeleton, useToast } from '../components/ui'
@@ -77,6 +78,7 @@ export default function Home() {
             <Back />
           </Link>
           <h1 className="brand"><Brand /></h1>
+          <HelpButton page="library" />
         </div>
         <div className="greet">{folder ? `${folder.name} · ${songs?.length ?? folder.song_count ?? 0}곡` : '저장된 스텝지'}</div>
         <div className="search">

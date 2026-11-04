@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Character } from '../components/Avatar'
 import { LevelUpOverlay } from '../components/LevelUp'
 import TopBar from '../components/TopBar'
+import HelpButton from '../components/HelpButton'
 import { useToast } from '../components/ui'
 import { getProfile, makeAvatar, mySheetCount, shrinkImage, updateProfile, uploadAvatar, type Profile } from '../lib/api'
 import { levelLabel, needFor, nextTitle, progressOf, titleOf } from '../lib/level'
@@ -96,7 +97,7 @@ export default function ProfilePage() {
 
   return (
     <div className="screen">
-      <TopBar title="내 프로필" back="/" />
+      <TopBar title="내 프로필" back="/" right={<HelpButton page="profile" />} />
       <div className="content">
         <section className="panel">
           <div className="profile-row">

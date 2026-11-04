@@ -4,6 +4,7 @@ import Player, { isVideoSrc, type PlayerHandle } from '../components/Player'
 import YouTubePlayer, { youtubeId } from '../components/YouTubePlayer'
 import SheetTable from '../components/SheetTable'
 import TopBar from '../components/TopBar'
+import HelpButton from '../components/HelpButton'
 import Tour from '../components/Tour'
 import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
 import { getFolder, getSheet, planRequest, signedUrl, updateSync, videoSync, type AiSyncSrc } from '../lib/api'
@@ -384,7 +385,7 @@ export default function SyncPage() {
 
   return (
     <div className="screen sync-screen">
-      <TopBar title="노래 동기화" sub={`${sheet.song?.title ?? ''} · ${sheet.creator_name}`} back={`/sheet/${sheet.id}`} />
+      <TopBar title="노래 동기화" sub={`${sheet.song?.title ?? ''} · ${sheet.creator_name}`} back={`/sheet/${sheet.id}`} right={<HelpButton page="sync" />} />
       <div className="content sync-content">
         {!canEdit && <div className="notice">이 폴더에서 편집 권한이 없어 저장은 안 돼요.</div>}
         {sheet.finalized && <div className="notice warn">✔ 수정 완료로 표시된 스텝지예요. 여기서는 동기화(시각)만 바뀌고 표시는 그대로예요.</div>}

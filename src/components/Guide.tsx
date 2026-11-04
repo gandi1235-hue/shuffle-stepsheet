@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { ONBOARD_KEY } from '../lib/tour'
 
+const isIOS = () => /iPhone|iPad|iPod/i.test(navigator.userAgent)
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true
+
 export type Deck = 'basic' | 'advanced'
 type Card = { emoji: string; bg: string; title: string; desc: string; tips?: string[] }
 
 const BASIC: Card[] = [
-  { emoji: '👋', bg: 'linear-gradient(135deg, #ff5f8f, #d9376e)', title: '셔플박스에 어서 오세요', desc: '종이 스텝지와 음원을 한곳에 모아 두는 셔플댄스 연습 앱이에요. 스텝지를 찍어 올리고, 노래를 틀면 지금 추는 줄이 따라와요.', tips: ['첫 화면의 네 칸: 스텝지함 · 새 스텝지 등록 · 공유 폴더 · 멤버 톡', '오른쪽 위 ? 버튼에서 이 안내를 언제든 다시 볼 수 있어요'] },
+  { emoji: '👋', bg: 'linear-gradient(135deg, #ff5f8f, #d9376e)', title: '셔플박스에 어서 오세요', desc: '종이 스텝지와 음원을 한곳에 모아 두는 셔플댄스 연습 앱이에요. 스텝지를 찍어 올리고, 노래를 틀면 지금 추는 줄이 따라와요.', tips: ['첫 화면의 네 칸: 스텝지함 · 새 스텝지 등록 · 공유 폴더 · 멤버 톡', '어느 화면이든 오른쪽 위 ? 를 누르면 그 화면 사용법이 나와요'] },
+  { emoji: '📲', bg: 'linear-gradient(135deg, #607d8b, #d9376e)', title: '먼저, 앱처럼 설치해요', desc: isStandalone() ? '이미 홈 화면에 설치돼 있어요. 주소창 없이 전체 화면으로 쓰고 있는 거예요.' : isIOS() ? '사파리에서 열었다면 1분이면 돼요. 홈 화면에 아이콘이 생기고 주소창 없이 전체 화면으로 열려요.' : '크롬에서 열었다면 1분이면 돼요. 홈 화면에 아이콘이 생기고 주소창 없이 전체 화면으로 열려요.', tips: isStandalone() ? ['첫 화면 ? → 기본 사용법에서 나머지를 볼 수 있어요'] : isIOS() ? ['① 사파리 아래 가운데 공유 버튼(네모에 화살표)', '② 아래로 내려 "홈 화면에 추가" → 추가', '③ 홈 화면의 ShuffleBox 아이콘으로 열기'] : ['① 크롬 오른쪽 위 ⋮ 메뉴', '② "홈 화면에 추가" 또는 "앱 설치" → 설치', '③ 홈 화면의 ShuffleBox 아이콘으로 열기 (설정에서도 다시 볼 수 있어요)'] },
   { emoji: '📸', bg: 'linear-gradient(135deg, #ff9a3c, #ff5f8f)', title: '사진 한 장이면 등록 끝', desc: '"새 스텝지 등록"에서 종이 스텝지나 칠판을 찍으면 AI가 읽어서 양식대로 줄을 나눠 줘요. 여러 장도 한 번에 돼요.', tips: ['노란 칸은 AI가 확신 없는 글자예요. 눌러서 고치세요', '제목·창작자만 확인하고 저장하면 끝', '사진 없이 글로 바로 적어도 돼요'] },
   { emoji: '🎵', bg: 'linear-gradient(135deg, #7c4dff, #d9376e)', title: '스텝지 보며 바로 연습', desc: '등록할 때 MP3 파일이나 유튜브 링크를 붙여 두면, 스텝지 아래에 재생기가 붙어요. 보면서 바로 틀 수 있어요.', tips: ['− / + 로 느리게·빠르게 (0.5배까지)', '"구간 반복"으로 어려운 부분만 돌려 듣기', '유튜브는 영상을 위나 옆에 두고 볼 수 있어요'] },
   { emoji: '🤖', bg: 'linear-gradient(135deg, #00b8a9, #2d7ff9)', title: 'AI가 박자를 맞춰 줘요', desc: '스텝지 화면의 "노래 동기화"에 들어가 "AI로 맞추기"를 누르면, AI가 노래를 듣고(영상은 보고) 줄마다 시작 시각을 찾아요.', tips: ['1~3분 걸려요. 다른 화면에 가 있어도 끝나면 자동 저장', '맞춰 두면 재생할 때 지금 줄이 빨갛게 표시되고, 줄을 누르면 그 자리로 이동', '틀린 줄은 그 줄이 시작될 때 눌러서 바로잡아요'] },

@@ -4,6 +4,7 @@ import { Character } from '../components/Avatar'
 import { Chevron } from '../components/Icons'
 import { levelLabel, levelOf } from '../lib/level'
 import TopBar from '../components/TopBar'
+import HelpButton from '../components/HelpButton'
 import { getProfile, mySheetCount, type Profile } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { usePrefs, type FontSize } from '../lib/prefs'
@@ -40,7 +41,7 @@ export default function SettingsPage() {
 
   return (
     <div className="screen">
-      <TopBar title="설정" back="/" />
+      <TopBar title="설정" back="/" right={<HelpButton page="settings" />} />
       <div className="content">
         <Link to="/profile" className="card" style={{ marginBottom: 12 }}>
           <Character path={profile?.avatar_path} name={profile?.nickname || profile?.display_name || '나'} userId={profile?.id} width={48} />

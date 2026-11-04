@@ -4,6 +4,7 @@ import Player, { isVideoSrc, type PlayerHandle } from '../components/Player'
 import YouTubePlayer, { youtubeId } from '../components/YouTubePlayer'
 import SheetTable from '../components/SheetTable'
 import TopBar from '../components/TopBar'
+import HelpButton from '../components/HelpButton'
 import Tour from '../components/Tour'
 import { Sheet as Modal, Skeleton, useToast } from '../components/ui'
 import { Copy, Doc, Edit, LayoutSide, LayoutTop, More, Photo, Print, Share } from '../components/Icons'
@@ -211,6 +212,7 @@ export default function SheetPage() {
         back="/library"
         right={
           <>
+            <HelpButton page="sheet" />
             {photos.length > 0 && (
               <button type="button" className={showPhotos ? 'iconbtn on' : 'iconbtn'} aria-label="원본 사진 보기" aria-pressed={showPhotos} onClick={() => setShowPhotos(!showPhotos)}>
                 <Photo />

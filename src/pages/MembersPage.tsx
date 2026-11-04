@@ -4,6 +4,7 @@ import Avatar, { Character } from '../components/Avatar'
 import { Sheet as Modal } from '../components/ui'
 import { FOLDER_INVITE_TEXT } from '../lib/share'
 import TopBar from '../components/TopBar'
+import HelpButton from '../components/HelpButton'
 import { useToast } from '../components/ui'
 import { getFolder, listMembers, removeMember, setMemberRole, sheetCounts, transferOwner, type Member } from '../lib/api'
 import { levelLabel, levelOf } from '../lib/level'
@@ -70,7 +71,7 @@ export default function MembersPage() {
 
   return (
     <div className="screen">
-      <TopBar title="멤버" sub={`${folder?.name ?? ''} · ${members.length}명`} back={`/folder/${id}`} />
+      <TopBar title="멤버" sub={`${folder?.name ?? ''} · ${members.length}명`} back={`/folder/${id}`} right={<HelpButton page="members" />} />
       <div className="content">
         <Link to={`/folder/${id}/chat`} className="btn block">
           💬 멤버 톡 열기
