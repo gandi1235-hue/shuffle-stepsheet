@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import InstallBanner from '../components/InstallBanner'
 import SongList from '../components/SongList'
 import { createSharedFolder, joinFolder, listFolders, listSongs, searchSheets, type SongWithSheets } from '../lib/api'
@@ -11,7 +11,6 @@ const roleKo = { owner: '주인', editor: '편집자', viewer: '보기' }
 const SEL = 'selected-folder'
 
 export default function Home() {
-  const nav = useNavigate()
   const [folders, setFolders] = useState<Folder[]>([])
   const [sel, setSel] = useState<string>(() => localStorage.getItem(SEL) ?? '')
   const [songs, setSongs] = useState<SongWithSheets[] | null>(null)
