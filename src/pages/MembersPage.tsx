@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import TopBar from '../components/TopBar'
+import { useToast } from '../components/ui'
 import { getFolder, listMembers, removeMember, setMemberRole, type Member } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import type { Folder, Role } from '../lib/types'
@@ -11,6 +12,7 @@ export default function MembersPage() {
   const [folder, setFolder] = useState<Folder | null>(null)
   const [members, setMembers] = useState<Member[]>([])
   const [err, setErr] = useState('')
+  const toast = useToast()
 
   const load = () => listMembers(id).then(setMembers).catch((e) => setErr(e.message))
   useEffect(() => {
@@ -26,7 +28,7 @@ export default function MembersPage() {
     if (navigator.share) await navigator.share({ text }).catch(() => undefined)
     else {
       await navigator.clipboard.writeText(text)
-      alert('초대 글을 복사했어요. 카카오톡에 붙여 넣어 주세요.')
+      toast('초대 글을 복사했어요. 카카오톡에 붙여 넣으세요.')
     }
   }
 
@@ -47,7 +49,7 @@ export default function MembersPage() {
 
   return (
     <div className="screen">
-      <TopBar title={`${folder?.name ?? ''} 멤버`} sub={`${members.length}명`} back={`/folder/${id}`} />
+      <TopBar title={`${folder?.name ?? ''} 멤버`} sub={`${members.length}명`} back="/" />
       <div className="content">
         {isOwner && (
           <>

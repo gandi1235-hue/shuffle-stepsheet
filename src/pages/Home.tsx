@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import InstallBanner from '../components/InstallBanner'
+import Onboarding from '../components/Onboarding'
+import { EmptyState, Sheet, Skeleton, useToast } from '../components/ui'
+import { haptic } from '../lib/prefs'
 import SongList from '../components/SongList'
 import { createSharedFolder, joinFolder, listFolders, listSongs, searchSheets, type SongWithSheets } from '../lib/api'
-import { supabase } from '../lib/supabase'
 import type { Folder, Stepsheet } from '../lib/types'
-import { Folder as FolderIcon, Music, People, Plus, Search, Shared, User } from '../components/Icons'
+import { Camera, Folder as FolderIcon, Gear, Music, People, Plus, Search, Shared } from '../components/Icons'
 
 const roleKo = { owner: '주인', editor: '편집자', viewer: '보기' }
 const SEL = 'selected-folder'
@@ -17,6 +19,9 @@ export default function Home() {
   const [q, setQ] = useState('')
   const [results, setResults] = useState<Stepsheet[] | null>(null)
   const [err, setErr] = useState('')
+  const [dlg, setDlg] = useState<'menu' | 'new' | 'join' | null>(null)
+  const [text, setText] = useState('')
+  const toast = useToast()
 
   useEffect(() => {
     listFolders()
@@ -44,36 +49,22 @@ export default function Home() {
     return () => clearTimeout(t)
   }, [q])
 
-  const newShared = async () => {
-    const name = prompt('공유 폴더 이름을 적어 주세요 (예: 월수반)')
-    if (!name) return
+  const submitDlg = async () => {
+    const v = text.trim()
+    if (!v) return
     try {
-      const id = await createSharedFolder(name)
+      const id = dlg === 'new' ? await createSharedFolder(v) : await joinFolder(v)
       const f = await listFolders()
       setFolders(f)
       setSel(id)
+      setDlg(null)
+      setText('')
+      haptic()
+      toast(dlg === 'new' ? `"${v}" 폴더를 만들었어요` : '폴더에 참여했어요')
     } catch (e) {
       setErr((e as Error).message)
+      setDlg(null)
     }
-  }
-
-  const join = async () => {
-    const code = prompt('받은 초대 코드를 적어 주세요')
-    if (!code) return
-    try {
-      const id = await joinFolder(code.trim())
-      const f = await listFolders()
-      setFolders(f)
-      setSel(id)
-    } catch (e) {
-      setErr((e as Error).message)
-    }
-  }
-
-  const folderMenu = () => {
-    const pick = prompt('1: 새 공유 폴더 만들기\n2: 초대 코드로 참여\n번호를 적어 주세요', '1')
-    if (pick === '1') newShared()
-    else if (pick === '2') join()
   }
 
   const folder = folders.find((f) => f.id === sel)
@@ -83,11 +74,12 @@ export default function Home() {
     <div className="screen">
       <div className="topbar">
         <h1 className="brand">스텝지함</h1>
-        <button type="button" className="iconbtn" aria-label="로그아웃" onClick={() => supabase.auth.signOut()}>
-          <User />
-        </button>
+        <Link to="/settings" className="iconbtn" aria-label="설정">
+          <Gear />
+        </Link>
       </div>
       <div className="content" style={{ paddingBottom: 100 }}>
+        <Onboarding />
         <InstallBanner />
         <div className="search">
           <Search />
@@ -116,7 +108,7 @@ export default function Home() {
                   <span className="n">{f.song_count}</span>
                 </button>
               ))}
-              <button type="button" className="tab add" aria-label="폴더 추가 또는 참여" onClick={folderMenu}>
+              <button type="button" className="tab add" aria-label="폴더 추가 또는 참여" onClick={() => setDlg('menu')}>
                 <Plus />
               </button>
             </div>
@@ -134,9 +126,22 @@ export default function Home() {
               </div>
             )}
 
-            {songs && songs.length === 0 && <div className="empty">아직 스텝지가 없어요. 아래 버튼으로 추가해 보세요.</div>}
+            {songs && songs.length === 0 && (
+              <EmptyState
+                icon={<Camera />}
+                title="아직 스텝지가 없어요"
+                desc={canEdit ? '종이 스텝지 사진 한 장이면 바로 등록돼요.' : '이 폴더의 편집자가 스텝지를 올리면 여기에 보여요.'}
+                action={
+                  canEdit ? (
+                    <Link to={`/add?folder=${sel}`} className="btn primary">
+                      첫 스텝지 등록하기
+                    </Link>
+                  ) : undefined
+                }
+              />
+            )}
             {songs && <SongList songs={songs} />}
-            {!songs && sel && <div className="spinner">불러오는 중…</div>}
+            {!songs && sel && <Skeleton rows={4} />}
           </>
         )}
       </div>
@@ -146,6 +151,51 @@ export default function Home() {
           스텝지 추가
         </Link>
       )}
+
+      <Sheet open={dlg === 'menu'} title="폴더" onClose={() => setDlg(null)}>
+        <button type="button" className="menu-item" onClick={() => setDlg('new')}>
+          <span className="ico">
+            <Shared />
+          </span>
+          <span className="grow">
+            <b>새 공유 폴더 만들기</b>
+            <span>반이나 팀 이름으로 폴더를 만들고 사람들을 초대해요</span>
+          </span>
+        </button>
+        <button type="button" className="menu-item" onClick={() => setDlg('join')}>
+          <span className="ico">
+            <People />
+          </span>
+          <span className="grow">
+            <b>초대 코드로 참여</b>
+            <span>카카오톡으로 받은 6자리 코드를 넣어요</span>
+          </span>
+        </button>
+      </Sheet>
+      <Sheet open={dlg === 'new' || dlg === 'join'} title={dlg === 'new' ? '새 공유 폴더' : '초대 코드로 참여'} onClose={() => setDlg(null)}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            submitDlg()
+          }}
+          className="list"
+        >
+          <div className="field">
+            <label htmlFor="dlg-input">{dlg === 'new' ? '폴더 이름' : '초대 코드'}</label>
+            <input
+              id="dlg-input"
+              autoFocus
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={dlg === 'new' ? '예: 월수반' : '예: AB12CD'}
+              autoCapitalize={dlg === 'join' ? 'characters' : undefined}
+            />
+          </div>
+          <button type="submit" className="btn primary block" disabled={!text.trim()}>
+            {dlg === 'new' ? '만들기' : '참여하기'}
+          </button>
+        </form>
+      </Sheet>
     </div>
   )
 }

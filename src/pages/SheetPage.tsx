@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import Player from '../components/Player'
 import SheetTable from '../components/SheetTable'
 import TopBar from '../components/TopBar'
+import { Skeleton, useToast } from '../components/ui'
 import { Edit, Photo, Print, Share } from '../components/Icons'
 import { getFolder, getSheet, signedUrl } from '../lib/api'
 import type { Folder, Stepsheet } from '../lib/types'
@@ -17,6 +18,7 @@ export default function SheetPage() {
   const [showPhotos, setShowPhotos] = useState(false)
   const [big, setBig] = useState(false)
   const [err, setErr] = useState('')
+  const toast = useToast()
 
   useEffect(() => {
     getSheet(id)
@@ -40,7 +42,13 @@ export default function SheetPage() {
   }, [])
 
   if (err) return <div className="error">{err}</div>
-  if (!sheet) return <div className="spinner">불러오는 중…</div>
+  if (!sheet)
+    return (
+      <div className="content">
+        <Skeleton rows={1} h={110} />
+        <Skeleton rows={6} h={48} />
+      </div>
+    )
 
   const canEdit = folder?.role === 'owner' || folder?.role === 'editor'
   const isExternal = !sheet.audio_path && Boolean(sheet.audio_url)
@@ -51,7 +59,7 @@ export default function SheetPage() {
     if (navigator.share) await navigator.share({ title: text, url }).catch(() => undefined)
     else {
       await navigator.clipboard.writeText(url)
-      alert('링크를 복사했어요. 카카오톡에 붙여 넣어 주세요.')
+      toast('링크를 복사했어요. 카카오톡에 붙여 넣으세요.')
     }
   }
 

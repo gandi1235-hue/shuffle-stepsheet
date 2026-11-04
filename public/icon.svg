@@ -1,1 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0f6e66"/><path d="M20 44V18l24-4v26" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="44" r="6" fill="#fff"/><circle cx="40" cy="40" r="6" fill="#fff"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#12807a"/>
+      <stop offset="1" stop-color="#0a4f49"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#g)"/>
+  <!-- 스텝지 줄 -->
+  <rect x="13" y="14" width="22" height="3.2" rx="1.6" fill="#fff" opacity="0.55"/>
+  <rect x="13" y="22" width="16" height="3.2" rx="1.6" fill="#fff" opacity="0.4"/>
+  <rect x="13" y="30" width="12" height="3.2" rx="1.6" fill="#fff" opacity="0.28"/>
+  <!-- 음표 -->
+  <path d="M44.5 15.5v24.2" stroke="#fff" stroke-width="4.2" stroke-linecap="round"/>
+  <path d="M44.5 15.5c3.2 1.4 6.8 4.3 7 9.1" stroke="#fff" stroke-width="4.2" stroke-linecap="round" fill="none"/>
+  <ellipse cx="39.2" cy="41.6" rx="7" ry="5.4" fill="#fff" transform="rotate(-18 39.2 41.6)"/>
+  <!-- 발자국 점 -->
+  <circle cx="16" cy="47" r="3" fill="#8fd3cc"/>
+  <circle cx="25" cy="50" r="3" fill="#8fd3cc" opacity="0.7"/>
+</svg>

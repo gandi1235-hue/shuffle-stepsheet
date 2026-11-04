@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import TopBar from '../components/TopBar'
+import { useToast } from '../components/ui'
+import { haptic } from '../lib/prefs'
 import { Camera, Photo } from '../components/Icons'
 import { deleteSheet, findDuplicate, getSheet, listFolders, recognize, saveSheet } from '../lib/api'
 import { emptyLine, emptyRecognized, emptyStep, type Folder, type Line, type Recognized } from '../lib/types'
@@ -22,6 +24,7 @@ export default function AddPage() {
   const [err, setErr] = useState('')
   const camRef = useRef<HTMLInputElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const toast = useToast()
 
   useEffect(() => {
     listFolders().then((fs) => {
@@ -98,6 +101,8 @@ export default function AddPage() {
           .filter((l) => l.steps.length),
       }
       const saved = await saveSheet({ ...cleaned, folderId, audioFile, audioUrl: audioUrl.trim(), photoFiles: files, overwriteId })
+      haptic(20)
+      toast(editId ? '수정했어요' : '스텝지를 저장했어요')
       nav(`/sheet/${saved.id}`, { replace: true })
     } catch (e) {
       setErr((e as Error).message)

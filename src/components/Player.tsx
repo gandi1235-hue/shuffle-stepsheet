@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Pause, Play } from './Icons'
+import { haptic } from '../lib/prefs'
 
 const SPEEDS = [1, 0.9, 0.8, 0.7, 0.5]
 
@@ -45,6 +46,7 @@ export default function Player({ src, name, onBig }: { src: string; name: string
   const toggle = () => {
     const a = ref.current
     if (!a) return
+    haptic(8)
     if (a.paused) a.play()
     else a.pause()
   }
