@@ -382,8 +382,8 @@ export default function SyncPage() {
     try {
       await updateSync(sheet.id, withSync(sheet.sync, playingYt ? 'yt' : 'file', events, bpm, plan))
       haptic(20)
-      toast(`${playingYt ? '유튜브' : '음원'}용 동기화를 저장했어요. 재생하면 지금 줄이 표시돼요`)
-      nav(`/sheet/${sheet.id}`, { replace: true })
+      toast(`${playingYt ? '유튜브' : '음원'}용 동기화를 저장했어요. 따라 보기로 확인해 보세요`)
+      nav(`/sheet/${sheet.id}/watch`, { replace: true })
     } catch (e) {
       toast((e as Error).message)
     } finally {

@@ -16,6 +16,7 @@ import SyncPage from './pages/SyncPage'
 import SettingsPage from './pages/SettingsPage'
 import ProfilePage from './pages/ProfilePage'
 import SheetPage from './pages/SheetPage'
+import WatchPage from './pages/WatchPage'
 import StartPage from './pages/StartPage'
 import JoinPage from './pages/JoinPage'
 import { PENDING_JOIN } from './lib/share'
@@ -46,6 +47,7 @@ function Gate() {
       <Route path="/folder/:id/chat" element={<ChatPage />} />
       <Route path="/sheet/:id" element={<SheetPage />} />
       <Route path="/sheet/:id/sync" element={<SyncPage />} />
+      <Route path="/sheet/:id/watch" element={<WatchPage />} />
       <Route path="/add" element={<AddPage />} />
       <Route path="/edit/:id" element={<AddPage />} />
       <Route path="/settings" element={<SettingsPage />} />

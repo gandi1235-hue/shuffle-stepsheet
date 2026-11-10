@@ -1,5 +1,5 @@
 /** 화면마다 ? 버튼에서 보여 주는 짧은 Q&A. 답은 한 줄씩, 길게 쓰지 않기 */
-export type HelpPage = 'library' | 'folder' | 'sheet' | 'sync' | 'add' | 'edit' | 'chat' | 'members' | 'folderEdit' | 'settings' | 'profile'
+export type HelpPage = 'library' | 'folder' | 'sheet' | 'sync' | 'add' | 'edit' | 'chat' | 'members' | 'folderEdit' | 'settings' | 'profile' | 'watch'
 export type HelpItem = { q: string; a: string[] }
 
 export const HELP: Record<HelpPage, { title: string; items: HelpItem[] }> = {
@@ -26,11 +26,22 @@ export const HELP: Record<HelpPage, { title: string; items: HelpItem[] }> = {
     items: [
       { q: '노래를 틀면서 보려면?', a: ['아래 재생기 ▶. 느리게는 − / +, 어려운 부분은 "구간 반복"'] },
       { q: '지금 추는 줄이 표시되게 하려면?', a: ['"노래 동기화" → "AI로 맞추기" 한 번', '맞춘 뒤엔 줄을 누르면 그 자리로 이동'] },
+      { q: '영상 보면서 한 줄씩 따라 하려면?', a: ['"▶ 따라 보기": 지금 줄은 크게, 다음 줄은 미리 보여요', '이전·다음 줄로 바로 이동, 한 줄만 반복도 돼요'] },
       { q: '글자가 틀렸어요', a: ['위 연필 → 고치거나 "말로 고치기"'] },
       { q: '✔ 수정 완료는 언제 누르죠?', a: ['다 맞다 싶을 때. 이후 고치려 하면 먼저 물어봐요'] },
       { q: '인쇄·공유·삭제는?', a: ['오른쪽 위 ⋮ 메뉴'] },
       { q: '원본 사진을 보려면?', a: ['위 사진 아이콘'] },
       { q: '다른 폴더로 복사하면 버전도 같이 가나요?', a: ['네. 버전이 여럿이면 모두 함께 복사할지 물어봐요', '저쪽에 같은 스텝지(같은 사진·내용)가 있으면 건너뛰어요'] },
+    ],
+  },
+  watch: {
+    title: '따라 보기',
+    items: [
+      { q: '무슨 화면이죠?', a: ['영상·음원과 싱크 맞춰 지금 추는 줄을 크게 보여 줘요', '다음 줄은 아래에 미리, 3초 전부터 숫자로 세요'] },
+      { q: '한 줄만 연습하려면?', a: ['"↻ 이 줄만 반복" 켜기. 줄이 끝나면 그 줄 처음으로 돌아가요'] },
+      { q: '줄을 건너뛰려면?', a: ['◀ 이전 줄 / 다음 줄 ▶', '이전 줄은 지금 줄이 1.5초 넘게 지났으면 그 줄 처음으로'] },
+      { q: '느리게 보려면?', a: ['재생기의 − / + (0.8배까지)'] },
+      { q: '줄이 어긋나요', a: ['"동기화 교정"에서 그 줄이 시작될 때 누르면 돼요'] },
     ],
   },
   sync: {

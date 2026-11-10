@@ -212,6 +212,11 @@ export default function SheetPage() {
           </button>
         </div>
       )}
+      {hasPlayer && hasSync && (
+        <button type="button" className="btn watch" onClick={() => nav(`/sheet/${sheet.id}/watch`)} data-tour="watch">
+          ▶ 따라 보기
+        </button>
+      )}
       {canEdit && hasPlayer && (
         <button type="button" className={hasSaved ? 'btn sync on' : 'btn sync'} onClick={() => nav(`/sheet/${sheet.id}/sync`)} data-tour="sync">
           {hasSaved ? '동기화 교정' : playingYt ? '동기화 맞추기' : '노래 동기화'}
@@ -315,6 +320,11 @@ export default function SheetPage() {
       {sheet.finalized ? (
         <div className="final-chip no-print">
           <span className="grow">✔ 수정 완료 · 검토가 끝난 스텝지예요{canEdit ? '. 고치려면 한 번 더 물어봐요' : ''}</span>
+          {hasPlayer && hasSync && (
+            <button type="button" className="btn tiny primary" onClick={() => nav(`/sheet/${sheet.id}/watch`)}>
+              ▶ 따라 보기
+            </button>
+          )}
           {canEdit && (
             <button type="button" className="btn tiny" onClick={toggleFinalized}>
               표시 풀기
